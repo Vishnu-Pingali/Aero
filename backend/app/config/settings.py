@@ -53,6 +53,8 @@ class Settings:
     default_lomax: float = 97.5
     max_bbox_area_degrees: float = 2500.0
     max_aircraft_returned: int = 5000
+    india_snapshot_refresh_seconds: int = int(os.getenv("INDIA_SNAPSHOT_REFRESH_SECONDS", "30"))
+    india_tile_timeout_seconds: float = float(os.getenv("INDIA_TILE_TIMEOUT_SECONDS", "8.0"))
 
     cors_origins: Sequence[str] = Field(default_factory=lambda: _cors_origins())
 

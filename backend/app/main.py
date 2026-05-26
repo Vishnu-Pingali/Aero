@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -37,9 +38,17 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.opensky_service = OpenSkyService(settings, client, auth, cache)
     app.state.weather_service = WeatherService(settings, client, cache)
+    stop_event = asyncio.Event()
+    snapshot_task = asyncio.create_task(app.state.opensky_service.snapshot_loop(stop_event))
     try:
         yield
     finally:
+        stop_event.set()
+        snapshot_task.cancel()
+        try:
+            await snapshot_task
+        except asyncio.CancelledError:
+            pass
         await client.aclose()
 
 

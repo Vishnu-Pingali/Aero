@@ -42,4 +42,4 @@ async def flights_altitude(
     values = (lamin, lomin, lamax, lomax)
     if all(value is not None for value in values):
         bbox = (lamin, lomin, lamax, lomax)  # type: ignore[assignment]
-    return await service.get_altitude_filtered(min_alt, max_alt, bbox=bbox)
+    return await service.get_altitude_filtered(min_alt, max_alt, bbox=None)
