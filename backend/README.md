@@ -20,7 +20,7 @@ Open API docs at `http://127.0.0.1:8000/docs`.
 
 OpenSky credentials are loaded automatically from `backend/credentials/credentials.json`. If that file is not present, the app falls back to the repository root `credentials.json`.
 
-For production deployments, set `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` environment variables instead of uploading JSON credentials.
+For local runs, keep credentials in `backend/credentials/credentials.json` or set `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` in `backend/.env`.
 
 Expected shape:
 

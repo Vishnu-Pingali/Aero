@@ -95,35 +95,11 @@ API docs:
 http://127.0.0.1:8000/docs
 ```
 
-## Deployment
+## Local-Only Setup
 
-The repo is prepared for a split deployment:
+This repo is now intended to run locally on your machine. Deployment files for Vercel, Render, and Railway have been removed.
 
-- Backend: Railway using `railway.json`, `Procfile`, and root `requirements.txt`
-- Frontend: Vercel static deployment using `vercel.json`
-
-Deploy Vercel from the repository root. If you set Vercel's root directory to `frontend`, the included `frontend/vercel.json` handles the same API rewrites.
-
-Backend production environment variables:
-
-```text
-OPENSKY_CLIENT_ID=your-opensky-api-client-id
-OPENSKY_CLIENT_SECRET=your-opensky-api-client-secret
-ENVIRONMENT=production
-LOG_LEVEL=INFO
-OPENSKY_AUTH_ENABLED=false
-```
-
-In production, the backend uses public bounded OpenSky requests by default even if `OPENSKY_AUTH_ENABLED` is set. Only set `OPENSKY_FORCE_AUTH=true` if you deliberately want OAuth token calls enabled on the host.
-
-Railway deploy settings:
-
-```text
-Start command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
-Healthcheck path: /health
-```
-
-Railway environment variables:
+Recommended local environment:
 
 ```text
 ENVIRONMENT=production
@@ -134,18 +110,15 @@ OPENSKY_CACHE_TTL_SECONDS=4
 OPENSKY_TIMEOUT_SECONDS=30
 WEATHER_CACHE_TTL_SECONDS=60
 OPENSKY_MIN_REQUEST_INTERVAL_SECONDS=1.0
+INDIA_SNAPSHOT_REFRESH_SECONDS=30
+INDIA_TILE_TIMEOUT_SECONDS=8
+DEMO_FALLBACK_ENABLED=false
 ```
 
-Railway backend URL:
+Run from `backend/` and open the dashboard at:
 
 ```text
-https://web-production-43861.up.railway.app
-```
-
-The Vercel frontend routes `/api/*` to your deployed backend URL. Replace the placeholder in `vercel.json` and `frontend/vercel.json` after Railway creates the backend domain.
-
-```text
-https://web-production-43861.up.railway.app
+http://127.0.0.1:8000/dashboard
 ```
 
 ## API Endpoints
