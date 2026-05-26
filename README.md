@@ -202,7 +202,7 @@ For production, use `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` environment 
 
 - The dashboard polls aircraft every 5 seconds.
 - The backend keeps a full-India aircraft snapshot warm in the background and serves dashboard requests from that snapshot.
-- If OpenSky is unavailable from the deployment host, a small India demo fallback keeps the map usable instead of blank.
+- Demo fallback is disabled by default. The deployed dashboard is intended to use live OpenSky data.
 - Weather data is cached for 60 seconds.
 - OpenSky flight responses are cached briefly to smooth polling.
 - The backend intentionally avoids global OpenSky calls and uses bounding boxes for performance and rate-limit safety.

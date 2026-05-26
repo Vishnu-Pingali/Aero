@@ -51,7 +51,7 @@ class Settings:
     max_aircraft_returned: int = 5000
     india_snapshot_refresh_seconds: int = int(os.getenv("INDIA_SNAPSHOT_REFRESH_SECONDS", "30"))
     india_tile_timeout_seconds: float = float(os.getenv("INDIA_TILE_TIMEOUT_SECONDS", "8.0"))
-    demo_fallback_enabled: bool = os.getenv("DEMO_FALLBACK_ENABLED", "true").lower() == "true"
+    demo_fallback_enabled: bool = os.getenv("DEMO_FALLBACK_ENABLED", "false").lower() == "true"
 
     cors_origins: Sequence[str] = Field(default_factory=lambda: _cors_origins())
 

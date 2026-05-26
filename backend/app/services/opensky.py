@@ -75,6 +75,30 @@ class OpenSkyService:
                 return self._snapshot
         return FlightsResponse(source_time=None, count=0, bbox=self._settings.default_bbox, flights=[])
 
+    async def probe_live_data(self) -> dict[str, object]:
+        started = time.monotonic()
+        bbox = (18.0, 72.0, 20.0, 74.0)
+        try:
+            response = await self._fetch_states(bbox)
+            return {
+                "ok": True,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "bbox": bbox,
+                "count": response.count,
+                "source_time": response.source_time,
+                "auth_enabled": self._settings.opensky_auth_enabled,
+            }
+        except Exception as exc:
+            logger.exception("OpenSky live probe failed")
+            return {
+                "ok": False,
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "bbox": bbox,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "auth_enabled": self._settings.opensky_auth_enabled,
+            }
+
     async def refresh_india_snapshot(self) -> None:
         tiles = _india_tiles()
         results = await asyncio.gather(

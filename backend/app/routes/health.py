@@ -19,3 +19,8 @@ async def health_config(request: Request) -> dict[str, object]:
         "default_bbox": settings.default_bbox,
         "demo_fallback_enabled": settings.demo_fallback_enabled,
     }
+
+
+@router.get("/health/opensky")
+async def health_opensky(request: Request) -> dict[str, object]:
+    return await request.app.state.opensky_service.probe_live_data()
