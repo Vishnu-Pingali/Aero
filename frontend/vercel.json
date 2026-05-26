@@ -7,11 +7,11 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://aero-api-b6ld.onrender.com/api/:path*"
+      "destination": "https://YOUR-RAILWAY-BACKEND.up.railway.app/api/:path*"
     },
     {
       "source": "/health",
-      "destination": "https://aero-api-b6ld.onrender.com/health"
+      "destination": "https://YOUR-RAILWAY-BACKEND.up.railway.app/health"
     }
   ]
 }

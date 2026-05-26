@@ -136,15 +136,13 @@ WEATHER_CACHE_TTL_SECONDS=60
 OPENSKY_MIN_REQUEST_INTERVAL_SECONDS=1.0
 ```
 
-After Railway gives you a backend URL, update `vercel.json` and `frontend/vercel.json` from the old Render URL to the Railway URL.
+After Railway gives you a backend URL, update `vercel.json` and `frontend/vercel.json` with that Railway URL.
 
-The Vercel frontend routes `/api/*` to:
+The Vercel frontend routes `/api/*` to your deployed backend URL. Replace the placeholder in `vercel.json` and `frontend/vercel.json` after Railway creates the backend domain.
 
 ```text
-https://aero-api-b6ld.onrender.com
+https://YOUR-RAILWAY-BACKEND.up.railway.app
 ```
-
-If Render gives the backend a different URL, update `vercel.json` and redeploy Vercel.
 
 ## API Endpoints
 
