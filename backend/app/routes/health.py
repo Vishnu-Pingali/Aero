@@ -17,4 +17,5 @@ async def health_config(request: Request) -> dict[str, object]:
         "opensky_auth_enabled": settings.opensky_auth_enabled,
         "opensky_timeout_seconds": settings.opensky_timeout_seconds,
         "default_bbox": settings.default_bbox,
+        "demo_fallback_enabled": settings.demo_fallback_enabled,
     }

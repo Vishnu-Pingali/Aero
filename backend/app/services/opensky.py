@@ -107,6 +107,16 @@ class OpenSkyService:
             if cached is not None:
                 self._snapshot = cached
                 self._snapshot_updated_at = time.monotonic()
+            elif self._settings.demo_fallback_enabled:
+                flights = _demo_india_aircraft()
+                self._snapshot = FlightsResponse(
+                    source_time=None,
+                    count=len(flights),
+                    bbox=self._settings.default_bbox,
+                    flights=flights,
+                )
+                self._snapshot_updated_at = time.monotonic()
+                logger.warning("Using demo India aircraft fallback because OpenSky returned no live tiles")
 
     async def snapshot_loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
@@ -220,6 +230,131 @@ def _india_tiles() -> list[tuple[float, float, float, float]]:
         (27.0, 68.0, 37.5, 78.0),
         (27.0, 78.0, 37.5, 88.0),
         (27.0, 88.0, 37.5, 97.5),
+    ]
+
+
+def _demo_india_aircraft() -> list[Aircraft]:
+    return [
+        Aircraft(
+            icao24="demo001",
+            callsign="AIC101",
+            latitude=28.5562,
+            longitude=77.1,
+            altitude_m=10668,
+            altitude_ft=35000,
+            velocity_mps=236,
+            velocity_kts=459,
+            heading=245,
+            vertical_rate_mps=0,
+            vertical_rate_fpm=0,
+            country="India",
+            on_ground=False,
+        ),
+        Aircraft(
+            icao24="demo002",
+            callsign="IGO742",
+            latitude=19.0896,
+            longitude=72.8656,
+            altitude_m=9144,
+            altitude_ft=30000,
+            velocity_mps=221,
+            velocity_kts=430,
+            heading=132,
+            vertical_rate_mps=1.5,
+            vertical_rate_fpm=295,
+            country="India",
+            on_ground=False,
+        ),
+        Aircraft(
+            icao24="demo003",
+            callsign="VTI895",
+            latitude=13.1986,
+            longitude=77.7066,
+            altitude_m=11582,
+            altitude_ft=38000,
+            velocity_mps=244,
+            velocity_kts=474,
+            heading=318,
+            vertical_rate_mps=-0.4,
+            vertical_rate_fpm=-79,
+            country="India",
+            on_ground=False,
+        ),
+        Aircraft(
+            icao24="demo004",
+            callsign="AXB612",
+            latitude=22.6547,
+            longitude=88.4467,
+            altitude_m=9754,
+            altitude_ft=32000,
+            velocity_mps=226,
+            velocity_kts=439,
+            heading=264,
+            vertical_rate_mps=0.2,
+            vertical_rate_fpm=39,
+            country="India",
+            on_ground=False,
+        ),
+        Aircraft(
+            icao24="demo005",
+            callsign="IGO528",
+            latitude=17.2403,
+            longitude=78.4294,
+            altitude_m=8534,
+            altitude_ft=28000,
+            velocity_mps=212,
+            velocity_kts=412,
+            heading=52,
+            vertical_rate_mps=2.1,
+            vertical_rate_fpm=413,
+            country="India",
+            on_ground=False,
+        ),
+        Aircraft(
+            icao24="demo006",
+            callsign="AIC430",
+            latitude=12.9941,
+            longitude=80.1709,
+            altitude_m=7010,
+            altitude_ft=23000,
+            velocity_mps=198,
+            velocity_kts=385,
+            heading=18,
+            vertical_rate_mps=-1.1,
+            vertical_rate_fpm=-217,
+            country="India",
+            on_ground=False,
+        ),
+        Aircraft(
+            icao24="demo007",
+            callsign="IGO119",
+            latitude=26.7606,
+            longitude=80.8893,
+            altitude_m=7925,
+            altitude_ft=26000,
+            velocity_mps=205,
+            velocity_kts=398,
+            heading=101,
+            vertical_rate_mps=0.7,
+            vertical_rate_fpm=138,
+            country="India",
+            on_ground=False,
+        ),
+        Aircraft(
+            icao24="demo008",
+            callsign="VTI320",
+            latitude=23.0734,
+            longitude=72.6266,
+            altitude_m=10058,
+            altitude_ft=33000,
+            velocity_mps=231,
+            velocity_kts=449,
+            heading=176,
+            vertical_rate_mps=-0.6,
+            vertical_rate_fpm=-118,
+            country="India",
+            on_ground=False,
+        ),
     ]
 
 def _parse_aircraft(row: list[Any]) -> Aircraft | None:
