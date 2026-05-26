@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     auth = OpenSkyAuth(settings, client)
     app.state.http_client = client
     app.state.cache = cache
+    app.state.settings = settings
     app.state.opensky_service = OpenSkyService(settings, client, auth, cache)
     app.state.weather_service = WeatherService(settings, client, cache)
     try:

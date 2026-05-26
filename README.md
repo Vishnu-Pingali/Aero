@@ -136,12 +136,16 @@ WEATHER_CACHE_TTL_SECONDS=60
 OPENSKY_MIN_REQUEST_INTERVAL_SECONDS=1.0
 ```
 
-After Railway gives you a backend URL, update `vercel.json` and `frontend/vercel.json` with that Railway URL.
+Railway backend URL:
+
+```text
+https://web-production-43861.up.railway.app
+```
 
 The Vercel frontend routes `/api/*` to your deployed backend URL. Replace the placeholder in `vercel.json` and `frontend/vercel.json` after Railway creates the backend domain.
 
 ```text
-https://YOUR-RAILWAY-BACKEND.up.railway.app
+https://web-production-43861.up.railway.app
 ```
 
 ## API Endpoints
