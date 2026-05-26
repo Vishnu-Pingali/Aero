@@ -62,10 +62,8 @@ class OpenSkyService:
 
     async def _fetch_states(self, bbox: tuple[float, float, float, float]) -> FlightsResponse:
         await self._respect_min_interval()
-        token = await self._auth.bearer_token()
         params = {"lamin": bbox[0], "lomin": bbox[1], "lamax": bbox[2], "lomax": bbox[3]}
-        headers = {"Authorization": f"Bearer {token}"}
-        response = await self._client.get(self._settings.opensky_states_url, params=params, headers=headers)
+        response = await self._request_states(params)
 
         if response.status_code == 429:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "OpenSky rate limit reached; retry shortly.")
@@ -80,6 +78,22 @@ class OpenSkyService:
         flights = [aircraft for row in states if (aircraft := _parse_aircraft(row)) is not None]
         flights = flights[: self._settings.max_aircraft_returned]
         return FlightsResponse(source_time=payload.get("time"), count=len(flights), bbox=bbox, flights=flights)
+
+    async def _request_states(self, params: dict[str, float]) -> httpx.Response:
+        headers = {}
+        try:
+            token = await self._auth.bearer_token()
+            headers = {"Authorization": f"Bearer {token}"}
+        except (httpx.TimeoutException, httpx.TransportError):
+            logger.warning("OpenSky auth timed out; retrying states request without bearer token")
+
+        try:
+            return await self._client.get(self._settings.opensky_states_url, params=params, headers=headers)
+        except httpx.TimeoutException:
+            if not headers:
+                raise
+            logger.warning("OpenSky authenticated states request timed out; retrying without bearer token")
+            return await self._client.get(self._settings.opensky_states_url, params=params)
 
     async def _respect_min_interval(self) -> None:
         async with self._request_lock:

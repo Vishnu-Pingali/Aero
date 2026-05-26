@@ -23,10 +23,10 @@ configure_logging(settings)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     timeout = httpx.Timeout(
-        connect=5.0,
+        connect=10.0,
         read=max(settings.opensky_timeout_seconds, settings.weather_timeout_seconds),
-        write=5.0,
-        pool=5.0,
+        write=10.0,
+        pool=10.0,
     )
     limits = httpx.Limits(max_connections=50, max_keepalive_connections=20)
     client = httpx.AsyncClient(timeout=timeout, limits=limits, headers={"User-Agent": settings.user_agent})

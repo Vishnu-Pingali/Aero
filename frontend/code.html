@@ -201,7 +201,9 @@
     };
 
     const INDIA_CENTER = [22.5, 78.9];
-    const INDIA_ZOOM = 5;
+    const INDIA_ZOOM = 6;
+    const INDIA_BBOX = { lamin: 6, lomin: 68, lamax: 37.5, lomax: 97.5 };
+    const MAX_CLIENT_BBOX_AREA = 1800;
     const INDIA_METAR_STATIONS = "VIDP,VABB,VOBL,VOMM,VOHS,VECC,VAAH";
     const map = L.map("map", { zoomControl: false, preferCanvas: true }).setView(INDIA_CENTER, INDIA_ZOOM);
     L.control.zoom({ position: "topright" }).addTo(map);
@@ -237,11 +239,20 @@
 
     function boundsParams() {
       const b = map.getBounds();
-      const south = Math.max(-90, b.getSouth()).toFixed(5);
-      const west = Math.max(-180, b.getWest()).toFixed(5);
-      const north = Math.min(90, b.getNorth()).toFixed(5);
-      const east = Math.min(180, b.getEast()).toFixed(5);
-      return { lamin: south, lomin: west, lamax: north, lomax: east };
+      const south = Math.max(INDIA_BBOX.lamin, b.getSouth());
+      const west = Math.max(INDIA_BBOX.lomin, b.getWest());
+      const north = Math.min(INDIA_BBOX.lamax, b.getNorth());
+      const east = Math.min(INDIA_BBOX.lomax, b.getEast());
+      const area = (north - south) * (east - west);
+      if (south >= north || west >= east || area > MAX_CLIENT_BBOX_AREA) {
+        return INDIA_BBOX;
+      }
+      return {
+        lamin: south.toFixed(5),
+        lomin: west.toFixed(5),
+        lamax: north.toFixed(5),
+        lomax: east.toFixed(5)
+      };
     }
 
     function altitudeBounds() {

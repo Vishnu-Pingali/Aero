@@ -31,7 +31,7 @@ class Settings:
         "protocol/openid-connect/token"
     )
     opensky_states_url: str = "https://opensky-network.org/api/states/all"
-    opensky_timeout_seconds: float = 12.0
+    opensky_timeout_seconds: float = float(os.getenv("OPENSKY_TIMEOUT_SECONDS", "30.0"))
     opensky_cache_ttl_seconds: int = int(os.getenv("OPENSKY_CACHE_TTL_SECONDS", "4"))
     opensky_min_request_interval_seconds: float = float(os.getenv("OPENSKY_MIN_REQUEST_INTERVAL_SECONDS", "1.0"))
     opensky_token_refresh_margin_seconds: int = 60
@@ -39,7 +39,7 @@ class Settings:
     weather_sigmet_url: str = "https://aviationweather.gov/api/data/airsigmet"
     weather_metar_url: str = "https://aviationweather.gov/api/data/metar"
     weather_cache_ttl_seconds: int = int(os.getenv("WEATHER_CACHE_TTL_SECONDS", "60"))
-    weather_timeout_seconds: float = 15.0
+    weather_timeout_seconds: float = float(os.getenv("WEATHER_TIMEOUT_SECONDS", "20.0"))
     user_agent: str = "Aero-Ops-Intelligence/1.0 contact=local"
 
     default_lamin: float = 6.0

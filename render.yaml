@@ -20,6 +20,8 @@ services:
         sync: false
       - key: OPENSKY_CACHE_TTL_SECONDS
         value: "4"
+      - key: OPENSKY_TIMEOUT_SECONDS
+        value: "30"
       - key: WEATHER_CACHE_TTL_SECONDS
         value: "60"
       - key: OPENSKY_MIN_REQUEST_INTERVAL_SECONDS
