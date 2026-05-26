@@ -102,6 +102,8 @@ The repo is prepared for a split deployment:
 - Backend: Render web service using `render.yaml`
 - Frontend: Vercel static deployment using `vercel.json`
 
+Deploy Vercel from the repository root. If you accidentally set Vercel's root directory to `frontend`, `frontend/index.html` will still redirect to the dashboard.
+
 Backend production environment variables:
 
 ```text
