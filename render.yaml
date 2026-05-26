@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: aero-api
+    env: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: OPENSKY_CLIENT_ID
+        sync: false
+      - key: OPENSKY_CLIENT_SECRET
+        sync: false
+      - key: OPENSKY_CACHE_TTL_SECONDS
+        value: "4"
+      - key: WEATHER_CACHE_TTL_SECONDS
+        value: "60"
+      - key: OPENSKY_MIN_REQUEST_INTERVAL_SECONDS
+        value: "1.0"

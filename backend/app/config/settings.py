@@ -24,6 +24,8 @@ class Settings:
         os.getenv("OPENSKY_CREDENTIALS_PATH", str(BACKEND_DIR / "credentials" / "credentials.json"))
     )
     opensky_fallback_credentials_path: Path = REPO_DIR / "credentials.json"
+    opensky_client_id: str | None = os.getenv("OPENSKY_CLIENT_ID")
+    opensky_client_secret: str | None = os.getenv("OPENSKY_CLIENT_SECRET")
     opensky_token_url: str = (
         "https://auth.opensky-network.org/auth/realms/opensky-network/"
         "protocol/openid-connect/token"
@@ -47,16 +49,7 @@ class Settings:
     max_bbox_area_degrees: float = 2500.0
     max_aircraft_returned: int = 5000
 
-    cors_origins: Sequence[str] = Field(
-        default_factory=lambda: [
-            "null",
-            "http://localhost",
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
-        ]
-    )
+    cors_origins: Sequence[str] = Field(default_factory=lambda: _cors_origins())
 
     @field_validator("opensky_credentials_path", "opensky_fallback_credentials_path")
     @classmethod
@@ -76,3 +69,17 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def _cors_origins() -> list[str]:
+    configured = os.getenv("CORS_ORIGINS")
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return [
+        "null",
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]

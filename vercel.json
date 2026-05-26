@@ -1,0 +1,17 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/frontend/code.html"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://aero-api.onrender.com/api/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://aero-api.onrender.com/health"
+    }
+  ]
+}

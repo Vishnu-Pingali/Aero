@@ -95,6 +95,30 @@ API docs:
 http://127.0.0.1:8000/docs
 ```
 
+## Deployment
+
+The repo is prepared for a split deployment:
+
+- Backend: Render web service using `render.yaml`
+- Frontend: Vercel static deployment using `vercel.json`
+
+Backend production environment variables:
+
+```text
+OPENSKY_CLIENT_ID=your-opensky-api-client-id
+OPENSKY_CLIENT_SECRET=your-opensky-api-client-secret
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+```
+
+The Vercel frontend routes `/api/*` to:
+
+```text
+https://aero-api.onrender.com
+```
+
+If Render gives the backend a different URL, update `vercel.json` and redeploy Vercel.
+
 ## API Endpoints
 
 ```text
@@ -130,6 +154,8 @@ Expected format:
   "clientSecret": "your-client-secret"
 }
 ```
+
+For production, use `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` environment variables instead of uploading credential JSON files.
 
 ## Verified So Far
 

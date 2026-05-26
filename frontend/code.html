@@ -186,7 +186,8 @@
   </main>
 
   <script>
-    const API_BASE = window.AERO_API_BASE || "http://127.0.0.1:8000";
+    const LOCAL_HOSTS = new Set(["", "localhost", "127.0.0.1"]);
+    const API_BASE = window.AERO_API_BASE || (LOCAL_HOSTS.has(window.location.hostname) ? "http://127.0.0.1:8000" : "");
     const POLL_MS = 5000;
     const state = {
       markers: new Map(),

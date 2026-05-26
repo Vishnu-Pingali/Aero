@@ -68,6 +68,11 @@ class OpenSkyAuth:
         if self._client_id and self._client_secret:
             return self._client_id, self._client_secret
 
+        if self._settings.opensky_client_id and self._settings.opensky_client_secret:
+            self._client_id = self._settings.opensky_client_id
+            self._client_secret = self._settings.opensky_client_secret
+            return self._client_id, self._client_secret
+
         credentials_path = self._settings.opensky_credentials_path
         if not credentials_path.exists():
             credentials_path = self._settings.opensky_fallback_credentials_path
