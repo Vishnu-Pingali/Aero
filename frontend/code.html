@@ -265,12 +265,16 @@
       return { min, max };
     }
 
-    function flightsUrl() {
-      const params = new URLSearchParams(boundsParams());
+    function filteredFlights(flights) {
       const { min, max } = altitudeBounds();
-      params.set("min_alt", min);
-      params.set("max_alt", max);
-      return `${API_BASE}/api/flights/altitude?${params}`;
+      return flights.filter((flight) => {
+        if (!Number.isFinite(flight.altitude_ft)) return true;
+        return flight.altitude_ft >= min && flight.altitude_ft <= max;
+      });
+    }
+
+    function flightsUrl() {
+      return `${API_BASE}/api/flights?t=${Date.now()}`;
     }
 
     function markerHtml(flight) {
@@ -357,8 +361,9 @@
         if (!response.ok) throw new Error(`Flight API ${response.status}`);
         const payload = await response.json();
         state.flights = payload.flights || [];
-        updateMarkers(state.flights);
-        updateAircraftPanel(state.flights);
+        const visibleFlights = filteredFlights(state.flights);
+        updateMarkers(visibleFlights);
+        updateAircraftPanel(visibleFlights);
         els.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
         els.connection.textContent = "LIVE";
         els.connection.className = "font-mono text-xs text-tertiary-fixed bg-white/5 px-3 py-1 rounded-full";
@@ -366,11 +371,15 @@
         if (error.name !== "AbortError") {
           els.connection.textContent = "DEGRADED";
           els.connection.className = "font-mono text-xs text-error bg-white/5 px-3 py-1 rounded-full";
+          els.loading.textContent = `Flight feed unavailable: ${error.message}`;
+          els.loading.classList.remove("hidden");
           console.error(error);
         }
       } finally {
         state.inFlight = false;
-        els.loading.classList.add("hidden");
+        if (els.connection.textContent !== "DEGRADED") {
+          els.loading.classList.add("hidden");
+        }
       }
     }
 
@@ -448,9 +457,21 @@
       }, 1000);
     }
 
-    map.on("moveend", () => fetchFlights(true));
-    els.minAlt.addEventListener("input", () => fetchFlights(true));
-    els.maxAlt.addEventListener("input", () => fetchFlights(true));
+    map.on("moveend", () => {
+      const visibleFlights = filteredFlights(state.flights);
+      updateMarkers(visibleFlights);
+      updateAircraftPanel(visibleFlights);
+    });
+    els.minAlt.addEventListener("input", () => {
+      const visibleFlights = filteredFlights(state.flights);
+      updateMarkers(visibleFlights);
+      updateAircraftPanel(visibleFlights);
+    });
+    els.maxAlt.addEventListener("input", () => {
+      const visibleFlights = filteredFlights(state.flights);
+      updateMarkers(visibleFlights);
+      updateAircraftPanel(visibleFlights);
+    });
     document.getElementById("refresh-now").addEventListener("click", () => fetchFlights(true));
     document.getElementById("locate-india").addEventListener("click", () => map.setView(INDIA_CENTER, INDIA_ZOOM));
     document.getElementById("toggle-sigmets").addEventListener("click", () => {
