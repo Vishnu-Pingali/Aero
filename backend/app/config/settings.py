@@ -26,10 +26,11 @@ class Settings:
     opensky_fallback_credentials_path: Path = REPO_DIR / "credentials.json"
     opensky_client_id: str | None = os.getenv("OPENSKY_CLIENT_ID")
     opensky_client_secret: str | None = os.getenv("OPENSKY_CLIENT_SECRET")
-    opensky_auth_enabled: bool = os.getenv(
-        "OPENSKY_AUTH_ENABLED",
-        "false" if os.getenv("ENVIRONMENT", "development") == "production" else "true",
-    ).lower() == "true"
+    opensky_auth_enabled: bool = (
+        os.getenv("OPENSKY_FORCE_AUTH", "false").lower() == "true"
+        if os.getenv("ENVIRONMENT", "development") == "production"
+        else os.getenv("OPENSKY_AUTH_ENABLED", "true").lower() == "true"
+    )
     opensky_token_url: str = (
         "https://auth.opensky-network.org/auth/realms/opensky-network/"
         "protocol/openid-connect/token"

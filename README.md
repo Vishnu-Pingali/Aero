@@ -114,6 +114,8 @@ LOG_LEVEL=INFO
 OPENSKY_AUTH_ENABLED=false
 ```
 
+In production, the backend uses public bounded OpenSky requests by default even if `OPENSKY_AUTH_ENABLED` is set. Only set `OPENSKY_FORCE_AUTH=true` if you deliberately want OAuth token calls enabled on the host.
+
 The Vercel frontend routes `/api/*` to:
 
 ```text

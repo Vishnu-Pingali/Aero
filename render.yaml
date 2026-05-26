@@ -20,6 +20,8 @@ services:
         sync: false
       - key: OPENSKY_AUTH_ENABLED
         value: "false"
+      - key: OPENSKY_FORCE_AUTH
+        value: "false"
       - key: OPENSKY_CACHE_TTL_SECONDS
         value: "4"
       - key: OPENSKY_TIMEOUT_SECONDS
