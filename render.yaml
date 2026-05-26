@@ -19,7 +19,7 @@ services:
       - key: OPENSKY_CLIENT_SECRET
         sync: false
       - key: OPENSKY_AUTH_ENABLED
-        value: "false"
+        value: "true"
       - key: OPENSKY_CACHE_TTL_SECONDS
         value: "4"
       - key: OPENSKY_TIMEOUT_SECONDS

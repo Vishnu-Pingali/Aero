@@ -111,7 +111,7 @@ OPENSKY_CLIENT_ID=your-opensky-api-client-id
 OPENSKY_CLIENT_SECRET=your-opensky-api-client-secret
 ENVIRONMENT=production
 LOG_LEVEL=INFO
-OPENSKY_AUTH_ENABLED=false
+OPENSKY_AUTH_ENABLED=true
 ```
 
 The Vercel frontend routes `/api/*` to:
