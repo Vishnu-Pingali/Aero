@@ -34,7 +34,8 @@ class OpenSkyService:
         return await self.get_region_flights(*self._settings.default_bbox)
 
     async def get_region_flights(self, lamin: float, lomin: float, lamax: float, lomax: float) -> FlightsResponse:
-        bbox = normalize_bbox(lamin, lomin, lamax, lomax, self._settings.max_bbox_area_degrees)
+        bbox = _clamp_to_default_bbox((lamin, lomin, lamax, lomax), self._settings.default_bbox)
+        bbox = normalize_bbox(*bbox, self._settings.max_bbox_area_degrees)
         key = f"opensky:states:{bbox}"
         return await self._cache.get_or_set(
             key,
@@ -84,8 +85,10 @@ class OpenSkyService:
         try:
             token = await self._auth.bearer_token()
             headers = {"Authorization": f"Bearer {token}"}
+        except HTTPException as exc:
+            logger.info("OpenSky auth skipped: %s", exc.detail)
         except (httpx.TimeoutException, httpx.TransportError):
-            logger.warning("OpenSky auth timed out; retrying states request without bearer token")
+            logger.warning("OpenSky auth failed; retrying states request without bearer token")
 
         try:
             return await self._client.get(self._settings.opensky_states_url, params=params, headers=headers)
@@ -103,6 +106,22 @@ class OpenSkyService:
                 await asyncio.sleep(wait_for)
             self._last_request_at = time.monotonic()
 
+
+def _clamp_to_default_bbox(
+    bbox: tuple[float, float, float, float],
+    default_bbox: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    lamin, lomin, lamax, lomax = bbox
+    default_lamin, default_lomin, default_lamax, default_lomax = default_bbox
+    clamped = (
+        max(lamin, default_lamin),
+        max(lomin, default_lomin),
+        min(lamax, default_lamax),
+        min(lomax, default_lomax),
+    )
+    if clamped[0] >= clamped[2] or clamped[1] >= clamped[3]:
+        return default_bbox
+    return clamped
 
 def _parse_aircraft(row: list[Any]) -> Aircraft | None:
     if len(row) < 11:

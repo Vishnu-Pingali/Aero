@@ -23,6 +23,9 @@ class OpenSkyAuth:
         self._client_secret: str | None = None
 
     async def bearer_token(self) -> str:
+        if not self._settings.opensky_auth_enabled:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "OpenSky OAuth is disabled.")
+
         if self._access_token and not self._token_needs_refresh():
             return self._access_token
 
