@@ -7,11 +7,11 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://aero-api.onrender.com/api/:path*"
+      "destination": "https://aero-api-b6ld.onrender.com/api/:path*"
     },
     {
       "source": "/health",
-      "destination": "https://aero-api.onrender.com/health"
+      "destination": "https://aero-api-b6ld.onrender.com/health"
     }
   ]
 }

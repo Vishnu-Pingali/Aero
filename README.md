@@ -116,7 +116,7 @@ LOG_LEVEL=INFO
 The Vercel frontend routes `/api/*` to:
 
 ```text
-https://aero-api.onrender.com
+https://aero-api-b6ld.onrender.com
 ```
 
 If Render gives the backend a different URL, update `vercel.json` and redeploy Vercel.
