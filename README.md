@@ -99,7 +99,7 @@ http://127.0.0.1:8000/docs
 
 The repo is prepared for a split deployment:
 
-- Backend: Render web service using `render.yaml`
+- Backend: Railway using `railway.json`, `Procfile`, and root `requirements.txt`
 - Frontend: Vercel static deployment using `vercel.json`
 
 Deploy Vercel from the repository root. If you set Vercel's root directory to `frontend`, the included `frontend/vercel.json` handles the same API rewrites.
@@ -115,6 +115,28 @@ OPENSKY_AUTH_ENABLED=false
 ```
 
 In production, the backend uses public bounded OpenSky requests by default even if `OPENSKY_AUTH_ENABLED` is set. Only set `OPENSKY_FORCE_AUTH=true` if you deliberately want OAuth token calls enabled on the host.
+
+Railway deploy settings:
+
+```text
+Start command: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+Healthcheck path: /health
+```
+
+Railway environment variables:
+
+```text
+ENVIRONMENT=production
+LOG_LEVEL=INFO
+OPENSKY_AUTH_ENABLED=false
+OPENSKY_FORCE_AUTH=false
+OPENSKY_CACHE_TTL_SECONDS=4
+OPENSKY_TIMEOUT_SECONDS=30
+WEATHER_CACHE_TTL_SECONDS=60
+OPENSKY_MIN_REQUEST_INTERVAL_SECONDS=1.0
+```
+
+After Railway gives you a backend URL, update `vercel.json` and `frontend/vercel.json` from the old Render URL to the Railway URL.
 
 The Vercel frontend routes `/api/*` to:
 
