@@ -64,7 +64,7 @@ class OpenSkyService:
     async def _fetch_states(self, bbox: tuple[float, float, float, float]) -> FlightsResponse:
         await self._respect_min_interval()
         params = {"lamin": bbox[0], "lomin": bbox[1], "lamax": bbox[2], "lomax": bbox[3]}
-        response = await self._request_states(params)
+        response = await self._request_states_with_fallback(params)
 
         if response.status_code == 429:
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "OpenSky rate limit reached; retry shortly.")
@@ -98,6 +98,16 @@ class OpenSkyService:
             logger.warning("OpenSky authenticated states request timed out; retrying without bearer token")
             return await self._client.get(self._settings.opensky_states_url, params=params)
 
+    async def _request_states_with_fallback(self, params: dict[str, float]) -> httpx.Response:
+        try:
+            return await self._request_states(params)
+        except httpx.TimeoutException:
+            fallback = _fallback_bbox(params)
+            if fallback == params:
+                raise
+            logger.warning("OpenSky request timed out; retrying compact India fallback bbox")
+            return await self._request_states(fallback)
+
     async def _respect_min_interval(self) -> None:
         async with self._request_lock:
             elapsed = time.monotonic() - self._last_request_at
@@ -122,6 +132,13 @@ def _clamp_to_default_bbox(
     if clamped[0] >= clamped[2] or clamped[1] >= clamped[3]:
         return default_bbox
     return clamped
+
+
+def _fallback_bbox(params: dict[str, float]) -> dict[str, float]:
+    area = (params["lamax"] - params["lamin"]) * (params["lomax"] - params["lomin"])
+    if area <= 180:
+        return params
+    return {"lamin": 17.0, "lomin": 72.0, "lamax": 29.5, "lomax": 81.0}
 
 def _parse_aircraft(row: list[Any]) -> Aircraft | None:
     if len(row) < 11:
