@@ -1,0 +1,31 @@
+# Secrets
+credentials.json
+backend/credentials/credentials.json
+*.pem
+*.key
+
+# Local environment
+.env
+backend/.env
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+uvicorn.*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+

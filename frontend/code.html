@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>AERO_TRACK | Ops Intelligence</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+  <link crossorigin="" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet" />
+  <script crossorigin="" src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body { width: 100%; height: 100%; }
+    .material-symbols-outlined { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    .glass-panel { background: rgba(26, 29, 35, 0.68); backdrop-filter: blur(20px); border: 1px solid rgba(225, 253, 255, 0.1); }
+    .leaflet-container { background: #061422; font-family: "Hanken Grotesk", sans-serif; }
+    .leaflet-control-attribution { display: none; }
+    .aircraft-marker { width: 34px; height: 34px; display: grid; place-items: center; color: #e1fdff; filter: drop-shadow(0 0 10px rgba(0, 219, 231, 0.75)); transition: transform 350ms ease; }
+    .aircraft-marker .material-symbols-outlined { font-size: 30px; transform: rotate(var(--heading, 0deg)); }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgba(15, 29, 42, 0.95); color: #d6e4f7; border: 1px solid rgba(0, 219, 231, 0.25); box-shadow: 0 0 24px rgba(0, 219, 231, 0.12); }
+    .leaflet-popup-content { margin: 14px; min-width: 210px; }
+    .sigmet-severe { stroke: #ffb4ab; fill: #ffb4ab; }
+    .sigmet-extreme { stroke: #ff4f5e; fill: #ff4f5e; }
+    .sigmet-moderate { stroke: #ffca7a; fill: #ffca7a; }
+    .sigmet-advisory { stroke: #b8c3ff; fill: #b8c3ff; }
+    .range { accent-color: #00dbe7; }
+  </style>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            background: "#061422",
+            surface: "#061422",
+            "surface-container-low": "#0f1d2a",
+            "surface-container": "#13212e",
+            "surface-container-high": "#1e2b39",
+            primary: "#e1fdff",
+            "primary-container": "#00f2ff",
+            "on-primary-container": "#006a71",
+            secondary: "#b8c3ff",
+            "on-surface": "#d6e4f7",
+            "on-surface-variant": "#b9cacb",
+            "tertiary-fixed": "#62ff96",
+            error: "#ffb4ab",
+            "error-container": "#93000a",
+            "on-error-container": "#ffdad6"
+          },
+          borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px" },
+          spacing: { gutter: "20px", "margin-safe": "32px", lg: "24px", md: "16px", sm: "8px" },
+          fontFamily: {
+            display: ["Geist"],
+            body: ["Hanken Grotesk"],
+            mono: ["JetBrains Mono"]
+          }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="bg-background text-on-surface font-body overflow-hidden">
+  <header class="fixed top-0 left-0 w-full z-[1000] flex justify-between items-center px-gutter h-16 bg-surface/70 backdrop-blur-xl border-b border-white/10">
+    <div class="flex items-center gap-4">
+      <span class="font-display text-2xl font-semibold text-primary tracking-tight">AERO_TRACK</span>
+      <span id="connection-state" class="font-mono text-xs text-tertiary-fixed bg-white/5 px-3 py-1 rounded-full">CONNECTING</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <span id="last-updated" class="hidden sm:block font-mono text-xs text-on-surface-variant">--</span>
+      <button class="bg-error-container text-on-error-container px-5 py-2 rounded-full font-mono text-xs hover:brightness-110 transition-all">Emergency</button>
+    </div>
+  </header>
+
+  <main class="fixed inset-0 pt-16 flex overflow-hidden">
+    <section class="relative flex-1 h-full overflow-hidden bg-[#061422]">
+      <div id="map" class="absolute inset-0 z-0"></div>
+      <div class="absolute inset-0 pointer-events-none z-[420] bg-[radial-gradient(circle_at_center,transparent_0%,rgba(6,20,34,0.45)_100%)]"></div>
+
+      <div id="loading-banner" class="absolute top-6 left-1/2 -translate-x-1/2 z-[800] glass-panel rounded-full px-5 py-2 font-mono text-xs text-primary">
+        Loading live aircraft...
+      </div>
+
+      <div class="absolute left-6 bottom-6 z-[800] flex flex-col gap-3">
+        <div class="glass-panel p-2 rounded-xl flex flex-col gap-2">
+          <button id="toggle-sigmets" class="p-3 rounded-lg bg-primary/20 text-primary border border-primary/30" title="Toggle SIGMET layer">
+            <span class="material-symbols-outlined text-3xl">thunderstorm</span>
+          </button>
+          <button id="refresh-now" class="p-3 rounded-lg text-on-surface-variant hover:text-primary hover:bg-white/5 transition-all" title="Refresh aircraft">
+            <span class="material-symbols-outlined text-3xl">radar</span>
+          </button>
+          <button id="locate-india" class="p-3 rounded-lg text-on-surface-variant hover:text-primary hover:bg-white/5 transition-all" title="India overview">
+            <span class="material-symbols-outlined text-3xl">navigation</span>
+          </button>
+        </div>
+        <div class="glass-panel px-5 py-3 rounded-full flex items-center gap-3">
+          <div id="sigmet-dot" class="w-3 h-3 rounded-full bg-tertiary-fixed shadow-[0_0_10px_rgba(98,255,150,0.5)]"></div>
+          <span id="sigmet-status" class="font-mono text-xs text-primary">SIGMET: ACTIVE</span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="w-[390px] max-w-[42vw] h-full bg-surface-container-low/90 backdrop-blur-3xl border-l border-white/10 flex flex-col overflow-y-auto z-[900]">
+      <div class="p-7 flex flex-col gap-8">
+        <section class="flex flex-col gap-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-xs font-mono text-on-surface-variant tracking-widest">VERTICAL FILTER</h3>
+            <span id="flight-count" class="font-mono text-xs text-primary bg-primary/10 px-2 py-1 rounded">0 LIVE</span>
+          </div>
+          <div class="glass-panel rounded-xl p-5">
+            <div class="flex items-end justify-between gap-4">
+              <div>
+                <div id="altitude-label" class="text-3xl font-display font-semibold text-primary">0-45,000</div>
+                <div class="text-[10px] font-mono text-on-surface-variant">FEET MSL</div>
+              </div>
+              <div id="avg-altitude" class="font-mono text-xs text-tertiary-fixed">AVG --</div>
+            </div>
+            <div class="mt-5 grid gap-4">
+              <label class="grid gap-2 text-xs font-mono text-on-surface-variant">
+                MIN ALTITUDE
+                <input id="min-alt" class="range w-full" max="45000" min="0" step="1000" type="range" value="0" />
+              </label>
+              <label class="grid gap-2 text-xs font-mono text-on-surface-variant">
+                MAX ALTITUDE
+                <input id="max-alt" class="range w-full" max="45000" min="0" step="1000" type="range" value="45000" />
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="flex flex-col gap-4">
+          <h3 class="text-xs font-mono text-on-surface-variant tracking-widest">ENVIRONMENTAL CONDITIONS</h3>
+          <div class="glass-panel p-5 rounded-xl border-secondary/20">
+            <div class="flex items-center gap-4 mb-5">
+              <div class="w-12 h-12 rounded-xl bg-secondary/10 flex items-center justify-center">
+                <span class="material-symbols-outlined text-secondary text-4xl">thunderstorm</span>
+              </div>
+              <div>
+                <div id="weather-title" class="text-xl font-display text-primary">SIGMET Monitor</div>
+                <div id="weather-subtitle" class="text-xs text-on-surface-variant">Awaiting AviationWeather data</div>
+              </div>
+            </div>
+              <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                <span class="text-sm text-on-surface-variant">Wind</span>
+                <span id="metar-wind" class="font-mono text-primary">--</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-on-surface-variant">Visibility</span>
+                <span id="metar-visibility" class="font-mono text-primary">--</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-on-surface-variant">Temperature</span>
+                <span id="metar-temp" class="font-mono text-primary">--</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-on-surface-variant">Altimeter</span>
+                <span id="metar-altimeter" class="font-mono text-primary">--</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-on-surface-variant">Flight Category</span>
+                <span id="metar-category" class="font-mono text-primary">--</span>
+              </div>
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-on-surface-variant">Active SIGMETs</span>
+                <span id="sigmet-count" class="font-mono text-primary">0</span>
+              </div>
+              <div class="pt-2">
+                <div class="flex justify-between items-center mb-2">
+                  <span class="text-[10px] font-mono text-on-surface-variant">POLLING CADENCE</span>
+                  <span class="text-[10px] font-mono text-tertiary-fixed">5 SEC</span>
+                </div>
+                <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
+                  <div id="poll-progress" class="bg-primary-container h-full w-0 transition-all duration-1000"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="flex flex-col gap-3">
+          <h3 class="text-xs font-mono text-on-surface-variant tracking-widest">LIVE AIRCRAFT</h3>
+          <div id="aircraft-list" class="grid gap-3"></div>
+        </section>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const API_BASE = window.AERO_API_BASE || "http://127.0.0.1:8000";
+    const POLL_MS = 5000;
+    const state = {
+      markers: new Map(),
+      flights: [],
+      sigmetLayer: null,
+      sigmetsVisible: true,
+      aborter: null,
+      inFlight: false,
+      lastBoundsKey: "",
+      pollTimer: null
+    };
+
+    const INDIA_CENTER = [22.5, 78.9];
+    const INDIA_ZOOM = 5;
+    const INDIA_METAR_STATIONS = "VIDP,VABB,VOBL,VOMM,VOHS,VECC,VAAH";
+    const map = L.map("map", { zoomControl: false, preferCanvas: true }).setView(INDIA_CENTER, INDIA_ZOOM);
+    L.control.zoom({ position: "topright" }).addTo(map);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 12,
+      subdomains: "abcd"
+    }).addTo(map);
+
+    const els = {
+      connection: document.getElementById("connection-state"),
+      lastUpdated: document.getElementById("last-updated"),
+      loading: document.getElementById("loading-banner"),
+      flightCount: document.getElementById("flight-count"),
+      minAlt: document.getElementById("min-alt"),
+      maxAlt: document.getElementById("max-alt"),
+      altitudeLabel: document.getElementById("altitude-label"),
+      avgAltitude: document.getElementById("avg-altitude"),
+      aircraftList: document.getElementById("aircraft-list"),
+      sigmetStatus: document.getElementById("sigmet-status"),
+      sigmetCount: document.getElementById("sigmet-count"),
+      weatherSubtitle: document.getElementById("weather-subtitle"),
+      metarWind: document.getElementById("metar-wind"),
+      metarVisibility: document.getElementById("metar-visibility"),
+      metarTemp: document.getElementById("metar-temp"),
+      metarAltimeter: document.getElementById("metar-altimeter"),
+      metarCategory: document.getElementById("metar-category"),
+      pollProgress: document.getElementById("poll-progress")
+    };
+
+    function formatNumber(value) {
+      return Number.isFinite(value) ? Math.round(value).toLocaleString() : "--";
+    }
+
+    function boundsParams() {
+      const b = map.getBounds();
+      const south = Math.max(-90, b.getSouth()).toFixed(5);
+      const west = Math.max(-180, b.getWest()).toFixed(5);
+      const north = Math.min(90, b.getNorth()).toFixed(5);
+      const east = Math.min(180, b.getEast()).toFixed(5);
+      return { lamin: south, lomin: west, lamax: north, lomax: east };
+    }
+
+    function altitudeBounds() {
+      let min = Number(els.minAlt.value);
+      let max = Number(els.maxAlt.value);
+      if (min > max) {
+        [min, max] = [max, min];
+      }
+      els.altitudeLabel.textContent = `${formatNumber(min)}-${formatNumber(max)}`;
+      return { min, max };
+    }
+
+    function flightsUrl() {
+      const params = new URLSearchParams(boundsParams());
+      const { min, max } = altitudeBounds();
+      params.set("min_alt", min);
+      params.set("max_alt", max);
+      return `${API_BASE}/api/flights/altitude?${params}`;
+    }
+
+    function markerHtml(flight) {
+      const heading = Number.isFinite(flight.heading) ? flight.heading : 0;
+      return `<div class="aircraft-marker" style="--heading:${heading - 45}deg"><span class="material-symbols-outlined">flight</span></div>`;
+    }
+
+    function popupHtml(flight) {
+      return `
+        <div>
+          <div class="font-display text-lg text-primary">${flight.callsign || flight.icao24.toUpperCase()}</div>
+          <div class="font-mono text-xs text-on-surface-variant">${flight.icao24.toUpperCase()} | ${flight.country || "Unknown"}</div>
+          <div class="mt-3 grid grid-cols-2 gap-2 font-mono text-xs">
+            <span>ALT</span><span class="text-primary text-right">${formatNumber(flight.altitude_ft)} FT</span>
+            <span>SPD</span><span class="text-primary text-right">${formatNumber(flight.velocity_kts)} KT</span>
+            <span>HDG</span><span class="text-primary text-right">${formatNumber(flight.heading)} DEG</span>
+            <span>VS</span><span class="text-primary text-right">${formatNumber(flight.vertical_rate_fpm)} FPM</span>
+          </div>
+        </div>`;
+    }
+
+    function updateMarkers(flights) {
+      const active = new Set();
+      for (const flight of flights) {
+        active.add(flight.icao24);
+        const latlng = [flight.latitude, flight.longitude];
+        const icon = L.divIcon({ html: markerHtml(flight), className: "", iconSize: [34, 34], iconAnchor: [17, 17] });
+        const existing = state.markers.get(flight.icao24);
+        if (existing) {
+          existing.setLatLng(latlng);
+          existing.setIcon(icon);
+          existing.setPopupContent(popupHtml(flight));
+        } else {
+          const marker = L.marker(latlng, { icon }).bindPopup(popupHtml(flight));
+          marker.addTo(map);
+          state.markers.set(flight.icao24, marker);
+        }
+      }
+      for (const [icao24, marker] of state.markers.entries()) {
+        if (!active.has(icao24)) {
+          marker.remove();
+          state.markers.delete(icao24);
+        }
+      }
+    }
+
+    function updateAircraftPanel(flights) {
+      els.flightCount.textContent = `${flights.length.toLocaleString()} LIVE`;
+      const altitudes = flights.map((f) => f.altitude_ft).filter(Number.isFinite);
+      const avg = altitudes.length ? altitudes.reduce((a, b) => a + b, 0) / altitudes.length : NaN;
+      els.avgAltitude.textContent = `AVG ${formatNumber(avg)}`;
+      els.aircraftList.innerHTML = flights.slice(0, 8).map((flight) => `
+        <button class="glass-panel rounded-lg p-3 text-left hover:border-primary/40 transition-all" data-icao="${flight.icao24}">
+          <div class="flex justify-between gap-3">
+            <span class="font-display text-primary">${flight.callsign || flight.icao24.toUpperCase()}</span>
+            <span class="font-mono text-xs text-tertiary-fixed">${formatNumber(flight.velocity_kts)} KT</span>
+          </div>
+          <div class="mt-1 flex justify-between font-mono text-xs text-on-surface-variant">
+            <span>${flight.country || "Unknown"}</span>
+            <span>${formatNumber(flight.altitude_ft)} FT</span>
+          </div>
+        </button>
+      `).join("");
+      els.aircraftList.querySelectorAll("button[data-icao]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const marker = state.markers.get(button.dataset.icao);
+          if (marker) {
+            map.panTo(marker.getLatLng(), { animate: true, duration: 0.5 });
+            marker.openPopup();
+          }
+        });
+      });
+    }
+
+    async function fetchFlights(force = false) {
+      if (state.inFlight && !force) return;
+      state.inFlight = true;
+      state.aborter?.abort();
+      state.aborter = new AbortController();
+      els.loading.classList.remove("hidden");
+      els.connection.textContent = "SYNCING";
+      try {
+        const response = await fetch(flightsUrl(), { signal: state.aborter.signal });
+        if (!response.ok) throw new Error(`Flight API ${response.status}`);
+        const payload = await response.json();
+        state.flights = payload.flights || [];
+        updateMarkers(state.flights);
+        updateAircraftPanel(state.flights);
+        els.lastUpdated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        els.connection.textContent = "LIVE";
+        els.connection.className = "font-mono text-xs text-tertiary-fixed bg-white/5 px-3 py-1 rounded-full";
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          els.connection.textContent = "DEGRADED";
+          els.connection.className = "font-mono text-xs text-error bg-white/5 px-3 py-1 rounded-full";
+          console.error(error);
+        }
+      } finally {
+        state.inFlight = false;
+        els.loading.classList.add("hidden");
+      }
+    }
+
+    function sigmetStyle(feature) {
+      const severity = (feature.properties?.severity || inferSeverity(feature.properties)).toLowerCase();
+      return { className: `sigmet-${severity}`, color: "#ffb4ab", weight: 2, opacity: 0.9, fillOpacity: 0.16 };
+    }
+
+    function inferSeverity(properties = {}) {
+      const text = JSON.stringify(properties).toUpperCase();
+      if (text.includes("EXTREME")) return "extreme";
+      if (text.includes("SEV") || text.includes("CONV") || text.includes("ASH")) return "severe";
+      if (text.includes("MOD")) return "moderate";
+      return "advisory";
+    }
+
+    async function fetchSigmets() {
+      try {
+        const response = await fetch(`${API_BASE}/api/weather/sigmets`);
+        if (!response.ok) throw new Error(`SIGMET API ${response.status}`);
+        const payload = await response.json();
+        if (state.sigmetLayer) state.sigmetLayer.remove();
+        state.sigmetLayer = L.geoJSON(payload.geojson, {
+          style: sigmetStyle,
+          onEachFeature: (feature, layer) => {
+            const props = feature.properties || {};
+            layer.bindPopup(`<div class="font-mono text-xs">${props.rawText || props.hazard || "Active SIGMET"}</div>`);
+          }
+        });
+        if (state.sigmetsVisible) state.sigmetLayer.addTo(map);
+        els.sigmetCount.textContent = String(payload.count || 0);
+        if (!els.weatherSubtitle.textContent.includes("METAR")) {
+          els.weatherSubtitle.textContent = payload.count ? "SIGMET overlay loaded" : "No active SIGMET polygons";
+        }
+        els.sigmetStatus.textContent = `SIGMET: ${payload.count || 0}`;
+      } catch (error) {
+        els.sigmetStatus.textContent = "SIGMET: DEGRADED";
+        console.error(error);
+      }
+    }
+
+    async function fetchMetars() {
+      try {
+        const response = await fetch(`${API_BASE}/api/weather/metars?ids=${INDIA_METAR_STATIONS}`);
+        if (!response.ok) throw new Error(`METAR API ${response.status}`);
+        const payload = await response.json();
+        const report = (payload.observations || [])[0];
+        if (!report) {
+          els.weatherSubtitle.textContent = "No METAR observations returned";
+          return;
+        }
+        const windDir = Number.isFinite(report.wind_direction_deg) ? `${report.wind_direction_deg} DEG` : "VRB";
+        const windSpeed = Number.isFinite(report.wind_speed_kt) ? `${report.wind_speed_kt} KT` : "--";
+        const gust = Number.isFinite(report.wind_gust_kt) ? ` G${report.wind_gust_kt}` : "";
+        els.weatherSubtitle.textContent = `METAR ${report.station} ${report.observed || ""}`.trim();
+        els.metarWind.textContent = `${windDir} / ${windSpeed}${gust}`;
+        els.metarVisibility.textContent = Number.isFinite(report.visibility_sm) ? `${report.visibility_sm} SM` : "--";
+        els.metarTemp.textContent = Number.isFinite(report.temperature_c) ? `${report.temperature_c} C` : "--";
+        els.metarAltimeter.textContent = Number.isFinite(report.altimeter_in_hg) ? `${report.altimeter_in_hg.toFixed(2)} IN` : "--";
+        els.metarCategory.textContent = report.flight_category || "--";
+      } catch (error) {
+        els.weatherSubtitle.textContent = "METAR feed degraded";
+        console.error(error);
+      }
+    }
+
+    function schedulePolling() {
+      clearInterval(state.pollTimer);
+      fetchFlights(true);
+      state.pollTimer = setInterval(() => fetchFlights(false), POLL_MS);
+      let progress = 0;
+      setInterval(() => {
+        progress = (progress + 20) % 120;
+        els.pollProgress.style.width = `${Math.min(progress, 100)}%`;
+      }, 1000);
+    }
+
+    map.on("moveend", () => fetchFlights(true));
+    els.minAlt.addEventListener("input", () => fetchFlights(true));
+    els.maxAlt.addEventListener("input", () => fetchFlights(true));
+    document.getElementById("refresh-now").addEventListener("click", () => fetchFlights(true));
+    document.getElementById("locate-india").addEventListener("click", () => map.setView(INDIA_CENTER, INDIA_ZOOM));
+    document.getElementById("toggle-sigmets").addEventListener("click", () => {
+      state.sigmetsVisible = !state.sigmetsVisible;
+      if (!state.sigmetLayer) return;
+      if (state.sigmetsVisible) state.sigmetLayer.addTo(map);
+      else state.sigmetLayer.remove();
+    });
+
+    altitudeBounds();
+    schedulePolling();
+    fetchSigmets();
+    fetchMetars();
+    setInterval(fetchSigmets, 60000);
+    setInterval(fetchMetars, 60000);
+  </script>
+</body>
+</html>
