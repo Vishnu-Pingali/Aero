@@ -1,8 +1,9 @@
 // ─── API base URL ─────────────────────────────────────────────────────────────
 const LOCAL_HOSTS = new Set(["", "localhost", "127.0.0.1"]);
-export const API_BASE =
-  window.AERO_API_BASE ||
-  (LOCAL_HOSTS.has(window.location.hostname) ? "http://127.0.0.1:8000" : "");
+// export const API_BASE =
+//   window.AERO_API_BASE ||
+//   (LOCAL_HOSTS.has(window.location.hostname) ? "http://127.0.0.1:8000" : "");
+export const API_BASE = 'https://aero-o7ph.onrender.com'
 
 export const POLL_MS = 600_000; // 10 minutes
 export const US_CENTER = [39.5, -98.35];
@@ -18,10 +19,10 @@ export function flightsUrl(map) {
     try {
       const b = map.getBounds();
       const south = Math.max(US_BBOX.lamin, b.getSouth());
-      const west  = Math.max(US_BBOX.lomin, b.getWest());
+      const west = Math.max(US_BBOX.lomin, b.getWest());
       const north = Math.min(US_BBOX.lamax, b.getNorth());
-      const east  = Math.min(US_BBOX.lomax, b.getEast());
-      const area  = (north - south) * (east - west);
+      const east = Math.min(US_BBOX.lomax, b.getEast());
+      const area = (north - south) * (east - west);
       if (south < north && west < east && area <= MAX_CLIENT_BBOX_AREA) {
         bbox = { lamin: south.toFixed(5), lomin: west.toFixed(5), lamax: north.toFixed(5), lomax: east.toFixed(5) };
       }
