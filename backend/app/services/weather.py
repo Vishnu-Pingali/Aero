@@ -82,7 +82,12 @@ def _parse_sigmet(feature: dict[str, Any]) -> SigmetFeature:
         or properties.get("type")
         or properties.get("airSigmetType")
     )
-    raw_text = properties.get("rawText") or properties.get("raw_text") or properties.get("text")
+    raw_text = (
+        properties.get("rawAirSigmet")
+        or properties.get("rawText")
+        or properties.get("raw_text")
+        or properties.get("text")
+    )
     severity = _infer_severity(sigmet_type, raw_text or "")
     return SigmetFeature(
         id=properties.get("id") or properties.get("airSigmetId") or feature.get("id"),
@@ -121,7 +126,7 @@ def _normalize_station_ids(ids: list[str]) -> list[str]:
             station_ids.append(cleaned)
     unique = list(dict.fromkeys(station_ids))
     if not unique:
-        unique = ["VIDP", "VABB", "VOBL", "VOMM", "VOHS", "VECC", "VAAH"]
+        unique = ["KJFK", "KLAX", "KORD", "KATL", "KDFW", "KDEN", "KSFO", "KMIA"]
     return unique[:12]
 
 

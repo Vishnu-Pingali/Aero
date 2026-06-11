@@ -3,7 +3,6 @@ credentials.json
 backend/credentials/credentials.json
 *.pem
 *.key
-
 # Local environment
 .env
 backend/.env

@@ -1,18 +1,16 @@
-import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.auth.opensky import OpenSkyAuth
 from app.cache.manager import CacheManager
 from app.config import get_settings
 from app.routes import flights, health, weather
-from app.services.opensky import OpenSkyService
+from app.services.airlabs import AirLabsService
 from app.services.weather import WeatherService
 from app.utils.logging import configure_logging
 
@@ -21,34 +19,26 @@ settings = get_settings()
 configure_logging(settings)
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     timeout = httpx.Timeout(
         connect=10.0,
-        read=max(settings.opensky_timeout_seconds, settings.weather_timeout_seconds),
+        read=max(settings.airlabs_timeout_seconds, settings.weather_timeout_seconds),
         write=10.0,
         pool=10.0,
     )
     limits = httpx.Limits(max_connections=50, max_keepalive_connections=20)
     client = httpx.AsyncClient(timeout=timeout, limits=limits, headers={"User-Agent": settings.user_agent})
     cache = CacheManager()
-    auth = OpenSkyAuth(settings, client)
     app.state.http_client = client
     app.state.cache = cache
     app.state.settings = settings
-    app.state.opensky_service = OpenSkyService(settings, client, auth, cache)
+    app.state.airlabs_service = AirLabsService(settings, client, cache)
     app.state.weather_service = WeatherService(settings, client, cache)
-    stop_event = asyncio.Event()
-    snapshot_task = asyncio.create_task(app.state.opensky_service.snapshot_loop(stop_event))
     try:
         yield
     finally:
-        stop_event.set()
-        snapshot_task.cancel()
-        try:
-            await snapshot_task
-        except asyncio.CancelledError:
-            pass
         await client.aclose()
 
 
@@ -95,8 +85,8 @@ async def root() -> dict[str, object]:
 
 
 @app.get("/dashboard", include_in_schema=False)
-async def dashboard() -> FileResponse:
-    return FileResponse(frontend_dir / "code.html")
+async def dashboard() -> JSONResponse:
+    return JSONResponse({"message": "Use the Vite dev server at http://localhost:5173 for the React frontend."})
 
 
 @app.exception_handler(httpx.TimeoutException)

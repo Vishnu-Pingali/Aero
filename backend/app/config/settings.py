@@ -13,6 +13,20 @@ REPO_DIR = BACKEND_DIR.parent
 load_dotenv(BACKEND_DIR / ".env")
 
 
+def _env_optional(name: str) -> str | None:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return None
+    return value.strip()
+
+
+def _env_path(name: str, default: Path) -> Path:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return Path(value)
+
+
 @dataclass
 class Settings:
     app_name: str = "Aero Ops Intelligence API"
@@ -20,22 +34,16 @@ class Settings:
     environment: str = os.getenv("ENVIRONMENT", "production")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
-    opensky_credentials_path: Path = Path(
-        os.getenv("OPENSKY_CREDENTIALS_PATH", str(BACKEND_DIR / "credentials" / "credentials.json"))
+    airlabs_credentials_path: Path = _env_path(
+        "AIRLABS_CREDENTIALS_PATH",
+        BACKEND_DIR / "credentials" / "credentials.json",
     )
-    opensky_fallback_credentials_path: Path = REPO_DIR / "credentials.json"
-    opensky_client_id: str | None = os.getenv("OPENSKY_CLIENT_ID")
-    opensky_client_secret: str | None = os.getenv("OPENSKY_CLIENT_SECRET")
-    opensky_auth_enabled: bool = os.getenv("OPENSKY_FORCE_AUTH", "false").lower() == "true"
-    opensky_token_url: str = (
-        "https://auth.opensky-network.org/auth/realms/opensky-network/"
-        "protocol/openid-connect/token"
-    )
-    opensky_states_url: str = "https://opensky-network.org/api/states/all"
-    opensky_timeout_seconds: float = float(os.getenv("OPENSKY_TIMEOUT_SECONDS", "30.0"))
-    opensky_cache_ttl_seconds: int = int(os.getenv("OPENSKY_CACHE_TTL_SECONDS", "4"))
-    opensky_min_request_interval_seconds: float = float(os.getenv("OPENSKY_MIN_REQUEST_INTERVAL_SECONDS", "1.0"))
-    opensky_token_refresh_margin_seconds: int = 60
+    airlabs_fallback_credentials_path: Path = REPO_DIR / "credentials.json"
+    airlabs_api_key: str | None = _env_optional("AIRLABS_API_KEY")
+    airlabs_base_url: str = os.getenv("AIRLABS_BASE_URL", "https://airlabs.co/api/v9")
+    airlabs_timeout_seconds: float = float(os.getenv("AIRLABS_TIMEOUT_SECONDS", "30.0"))
+    airlabs_cache_ttl_seconds: int = int(os.getenv("AIRLABS_CACHE_TTL_SECONDS", "600"))
+    airlabs_min_request_interval_seconds: float = float(os.getenv("AIRLABS_MIN_REQUEST_INTERVAL_SECONDS", "600.0"))
 
     weather_sigmet_url: str = "https://aviationweather.gov/api/data/airsigmet"
     weather_metar_url: str = "https://aviationweather.gov/api/data/metar"
@@ -43,19 +51,16 @@ class Settings:
     weather_timeout_seconds: float = float(os.getenv("WEATHER_TIMEOUT_SECONDS", "20.0"))
     user_agent: str = "Aero-Ops-Intelligence/1.0 contact=local"
 
-    default_lamin: float = 6.0
-    default_lomin: float = 68.0
-    default_lamax: float = 37.5
-    default_lomax: float = 97.5
+    default_lamin: float = 24.0
+    default_lomin: float = -125.0
+    default_lamax: float = 50.0
+    default_lomax: float = -66.0
     max_bbox_area_degrees: float = 2500.0
     max_aircraft_returned: int = 5000
-    india_snapshot_refresh_seconds: int = int(os.getenv("INDIA_SNAPSHOT_REFRESH_SECONDS", "30"))
-    india_tile_timeout_seconds: float = float(os.getenv("INDIA_TILE_TIMEOUT_SECONDS", "8.0"))
-    demo_fallback_enabled: bool = os.getenv("DEMO_FALLBACK_ENABLED", "false").lower() == "true"
 
     cors_origins: Sequence[str] = Field(default_factory=lambda: _cors_origins())
 
-    @field_validator("opensky_credentials_path", "opensky_fallback_credentials_path")
+    @field_validator("airlabs_credentials_path", "airlabs_fallback_credentials_path")
     @classmethod
     def expand_path(cls, value: Path) -> Path:
         return value.expanduser().resolve()
@@ -87,3 +92,4 @@ def _cors_origins() -> list[str]:
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
     ]
+

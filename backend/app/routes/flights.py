@@ -2,24 +2,24 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request
 
-from app.models.flights import FlightsResponse
-from app.services.opensky import OpenSkyService
+from app.models.flights import Aircraft, AircraftRoute, FlightsResponse
+from app.services.airlabs import AirLabsService
 
 router = APIRouter(prefix="/api/flights", tags=["flights"])
 
 
-def get_opensky_service(request: Request) -> OpenSkyService:
-    return request.app.state.opensky_service
+def get_airlabs_service(request: Request) -> AirLabsService:
+    return request.app.state.airlabs_service
 
 
 @router.get("", response_model=FlightsResponse)
-async def flights(service: Annotated[OpenSkyService, Depends(get_opensky_service)]) -> FlightsResponse:
+async def flights(service: Annotated[AirLabsService, Depends(get_airlabs_service)]) -> FlightsResponse:
     return await service.get_default_flights()
 
 
 @router.get("/region", response_model=FlightsResponse)
 async def flights_region(
-    service: Annotated[OpenSkyService, Depends(get_opensky_service)],
+    service: Annotated[AirLabsService, Depends(get_airlabs_service)],
     lamin: Annotated[float, Query(ge=-90, le=90)],
     lomin: Annotated[float, Query(ge=-180, le=180)],
     lamax: Annotated[float, Query(ge=-90, le=90)],
@@ -28,9 +28,29 @@ async def flights_region(
     return await service.get_region_flights(lamin, lomin, lamax, lomax)
 
 
+@router.get("/aircraft/{icao24}", response_model=Aircraft)
+async def aircraft(
+    service: Annotated[AirLabsService, Depends(get_airlabs_service)],
+    icao24: str,
+    latitude: Annotated[float, Query(ge=-90, le=90)],
+    longitude: Annotated[float, Query(ge=-180, le=180)],
+) -> Aircraft:
+    return await service.get_aircraft_near(icao24, latitude, longitude)
+
+
+@router.get("/aircraft/{icao24}/route", response_model=AircraftRoute)
+async def aircraft_route(
+    service: Annotated[AirLabsService, Depends(get_airlabs_service)],
+    icao24: str,
+    latitude: Annotated[float, Query(ge=-90, le=90)],
+    longitude: Annotated[float, Query(ge=-180, le=180)],
+) -> AircraftRoute:
+    return await service.get_aircraft_route(icao24, latitude, longitude)
+
+
 @router.get("/altitude", response_model=FlightsResponse)
 async def flights_altitude(
-    service: Annotated[OpenSkyService, Depends(get_opensky_service)],
+    service: Annotated[AirLabsService, Depends(get_airlabs_service)],
     min_alt: Annotated[int | None, Query(ge=-2000)] = None,
     max_alt: Annotated[int | None, Query(le=70000)] = None,
     lamin: Annotated[float | None, Query(ge=-90, le=90)] = None,
@@ -42,4 +62,4 @@ async def flights_altitude(
     values = (lamin, lomin, lamax, lomax)
     if all(value is not None for value in values):
         bbox = (lamin, lomin, lamax, lomax)  # type: ignore[assignment]
-    return await service.get_altitude_filtered(min_alt, max_alt, bbox=None)
+    return await service.get_altitude_filtered(min_alt, max_alt, bbox=bbox)

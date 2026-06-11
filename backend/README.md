@@ -1,6 +1,6 @@
 # Aero Ops Intelligence Backend
 
-FastAPI backend for real-time aviation situational awareness using OpenSky live state vectors plus AviationWeather SIGMET GeoJSON and METAR observations.
+FastAPI backend for real-time aviation situational awareness using AirLabs live flight data plus AviationWeather SIGMET GeoJSON and US METAR observations.
 
 ## Run locally
 
@@ -18,16 +18,15 @@ Open API docs at `http://127.0.0.1:8000/docs`.
 
 ## Credentials
 
-OpenSky credentials are loaded automatically from `backend/credentials/credentials.json`. If that file is not present, the app falls back to the repository root `credentials.json`.
+AirLabs credentials are loaded automatically from `backend/credentials/credentials.json`. If that file is not present, the app falls back to the repository root `credentials.json`.
 
-For local runs, keep credentials in `backend/credentials/credentials.json` or set `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` in `backend/.env`.
+For local runs, keep credentials in `backend/credentials/credentials.json` or set `AIRLABS_API_KEY` in `backend/.env`.
 
 Expected shape:
 
 ```json
 {
-  "clientId": "your-client-id",
-  "clientSecret": "your-client-secret"
+  "airlabs_api_key": "your-api-key"
 }
 ```
 
@@ -35,12 +34,12 @@ Expected shape:
 
 - `GET /health`
 - `GET /api/flights`
-- `GET /api/flights/region?lamin=6&lomin=68&lamax=37.5&lomax=97.5`
+- `GET /api/flights/region?lamin=24&lomin=-125&lamax=50&lomax=-66`
 - `GET /api/flights/altitude?min_alt=10000&max_alt=40000`
 - `GET /api/weather/sigmets`
-- `GET /api/weather/metars?ids=VIDP,VABB,VOBL,VOMM,VOHS,VECC,VAAH`
+- `GET /api/weather/metars?ids=KJFK,KLAX,KORD,KATL,KDFW,KDEN,KSFO,KMIA`
 
-`/api/flights` uses the configured India bounding box instead of a global OpenSky request. This avoids expensive API calls and keeps polling smooth.
+`/api/flights` uses the configured US bounding box instead of a global AirLabs request. This avoids expensive API calls and keeps polling smooth.
 
 ## Frontend
 

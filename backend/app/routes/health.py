@@ -14,13 +14,13 @@ async def health_config(request: Request) -> dict[str, object]:
     return {
         "status": "ok",
         "environment": settings.environment,
-        "opensky_auth_enabled": settings.opensky_auth_enabled,
-        "opensky_timeout_seconds": settings.opensky_timeout_seconds,
+        "airlabs_api_key_configured": request.app.state.airlabs_service.api_key_configured,
+        "airlabs_timeout_seconds": settings.airlabs_timeout_seconds,
+        "airlabs_cache_ttl_seconds": settings.airlabs_cache_ttl_seconds,
         "default_bbox": settings.default_bbox,
-        "demo_fallback_enabled": settings.demo_fallback_enabled,
     }
 
 
-@router.get("/health/opensky")
-async def health_opensky(request: Request) -> dict[str, object]:
-    return await request.app.state.opensky_service.probe_live_data()
+@router.get("/health/airlabs")
+async def health_airlabs(request: Request) -> dict[str, object]:
+    return await request.app.state.airlabs_service.probe_live_data()

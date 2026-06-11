@@ -15,11 +15,33 @@ class Aircraft(BaseModel):
     vertical_rate_fpm: int | None = None
     country: str | None = None
     on_ground: bool = False
+    origin_iata: str | None = None
+    origin_icao: str | None = None
+    origin_name: str | None = None
+    origin_latitude: float | None = None
+    origin_longitude: float | None = None
+    destination_iata: str | None = None
+    destination_icao: str | None = None
+    destination_name: str | None = None
+    destination_latitude: float | None = None
+    destination_longitude: float | None = None
 
 
 class FlightsResponse(BaseModel):
-    source: str = "opensky"
+    source: str = "airlabs"
     source_time: int | None = None
     count: int
     bbox: tuple[float, float, float, float]
     flights: list[Aircraft] = Field(default_factory=list)
+
+
+class RoutePoint(BaseModel):
+    type: str
+    label: str
+    latitude: float
+    longitude: float
+
+
+class AircraftRoute(BaseModel):
+    aircraft: Aircraft
+    points: list[RoutePoint]

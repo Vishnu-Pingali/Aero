@@ -14,6 +14,7 @@ Real-time aviation situational awareness prototype for India-focused flight trac
 - Typed Pydantic responses for flights and weather
 - AviationWeather SIGMET GeoJSON integration
 - AviationWeather METAR weather integration
+- ADSB.lol live aircraft fallback when OpenSky is unreachable
 - Leaflet map dashboard served from FastAPI at `/dashboard`
 - Live aircraft marker updates every 5 seconds
 - Rotating aircraft icons based on heading
@@ -97,15 +98,15 @@ http://127.0.0.1:8000/docs
 
 ## Local-Only Setup
 
-This repo is now intended to run locally on your machine. Deployment files for Vercel, Render, and Railway have been removed.
+This repo is now intended to run locally on your machine. 
 
 Recommended local environment:
 
 ```text
 ENVIRONMENT=production
 LOG_LEVEL=INFO
-OPENSKY_AUTH_ENABLED=false
-OPENSKY_FORCE_AUTH=false
+OPENSKY_AUTH_ENABLED=true
+OPENSKY_FORCE_AUTH=true
 OPENSKY_CACHE_TTL_SECONDS=4
 OPENSKY_TIMEOUT_SECONDS=30
 WEATHER_CACHE_TTL_SECONDS=60
@@ -176,6 +177,7 @@ For production, use `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` environment 
 - The dashboard polls aircraft every 5 seconds.
 - The backend keeps a full-India aircraft snapshot warm in the background and serves dashboard requests from that snapshot.
 - Demo fallback is disabled by default. The deployed dashboard is intended to use live OpenSky data.
+- ADSB.lol is enabled as a live aircraft fallback if OpenSky is unreachable from the host.
 - Weather data is cached for 60 seconds.
 - OpenSky flight responses are cached briefly to smooth polling.
 - The backend intentionally avoids global OpenSky calls and uses bounding boxes for performance and rate-limit safety.

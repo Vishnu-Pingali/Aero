@@ -1,0 +1,195 @@
+/* ─── Base resets and Theme Variables ─────────────────────────────────────────
+   Tailwind base/components/utilities are loaded via Play CDN in index.html.
+   This file contains custom theme variables and styles.
+────────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --color-background: #061422;
+  --color-surface: #061422;
+  --color-surface-container-low: #0f1d2a;
+  --color-surface-container: #13212e;
+  --color-surface-container-high: #1e2b39;
+  --color-primary: #e1fdff;
+  --color-primary-container: #00f2ff;
+  --color-on-primary-container: #006a71;
+  --color-secondary: #b8c3ff;
+  --color-on-surface: #d6e4f7;
+  --color-on-surface-variant: #b9cacb;
+  --color-tertiary-fixed: #62ff96;
+  --color-error: #ffb4ab;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+
+  --color-phase-climb: #62ff96;
+  --color-phase-descend: #ffb4ab;
+  --color-phase-cruise: #00dbe7;
+  --color-phase-ground: #6b7280;
+
+  --glow-climb: rgba(98, 255, 150, 0.75);
+  --glow-descend: rgba(255, 180, 171, 0.75);
+  --glow-cruise: rgba(0, 219, 231, 0.75);
+  --glow-ground: rgba(107, 114, 128, 0.5);
+
+  --glass-bg: rgba(26, 29, 35, 0.68);
+  --glass-border: rgba(225, 253, 255, 0.1);
+  --marker-label-shadow: 0 0 6px #061422, 0 0 3px #061422;
+  --scrollbar-thumb: rgba(225, 253, 255, 0.15);
+  --selected-aircraft: #ffffff;
+}
+
+.light {
+  --color-background: #f4f6fa;
+  --color-surface: #ffffff;
+  --color-surface-container-low: #f8fafc;
+  --color-surface-container: #edf2f7;
+  --color-surface-container-high: #e2e8f0;
+  --color-primary: #101d2c;
+  --color-primary-container: #0097a7;
+  --color-on-primary-container: #ffffff;
+  --color-secondary: #3b82f6;
+  --color-on-surface: #1e293b;
+  --color-on-surface-variant: #64748b;
+  --color-tertiary-fixed: #10b981;
+  --color-error: #dc2626;
+  --color-error-container: #fee2e2;
+  --color-on-error-container: #991b1b;
+
+  --color-phase-climb: #059669;
+  --color-phase-descend: #dc2626;
+  --color-phase-cruise: #0284c7;
+  --color-phase-ground: #4b5563;
+
+  --glow-climb: rgba(5, 150, 105, 0.35);
+  --glow-descend: rgba(220, 38, 38, 0.35);
+  --glow-cruise: rgba(2, 132, 199, 0.35);
+  --glow-ground: rgba(75, 85, 99, 0.25);
+
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --marker-label-shadow: 0 0 6px #ffffff, 0 0 3px #ffffff;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --selected-aircraft: #101d2c;
+}
+
+html, body, #root {
+  width: 100%; height: 100%; overflow: hidden;
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
+  font-family: "Hanken Grotesk", sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+* { box-sizing: border-box; }
+
+/* ─── Material Icons ──────────────────────────────────────────────────────── */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* ─── Leaflet overrides ───────────────────────────────────────────────────── */
+.leaflet-container { background: var(--color-background); font-family: "Hanken Grotesk", sans-serif; transition: background 0.25s ease; }
+.leaflet-control-attribution { display: none; }
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--color-surface-container-low);
+  color: var(--color-on-surface);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.12);
+  transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+.leaflet-popup-content { margin: 14px; min-width: 210px; }
+
+/* ─── SIGMET polygon classes ──────────────────────────────────────────────── */
+.sigmet-severe   { stroke: var(--color-error); fill: var(--color-error); }
+.sigmet-extreme  { stroke: #ff4f5e; fill: #ff4f5e; }
+.sigmet-moderate { stroke: #ffca7a; fill: #ffca7a; }
+.sigmet-advisory { stroke: var(--color-secondary); fill: var(--color-secondary); }
+
+/* ─── Aircraft markers ────────────────────────────────────────────────────── */
+.aircraft-marker {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  filter: drop-shadow(0 0 10px var(--marker-glow, rgba(0, 219, 231, 0.75)));
+  transition: transform 350ms ease;
+}
+.aircraft-marker .material-symbols-outlined {
+  font-size: 28px;
+  transform: rotate(var(--heading, 0deg));
+  transition: transform 0.8s ease;
+  color: var(--marker-color, #e1fdff);
+}
+.aircraft-marker-label {
+  position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 600;
+  color: var(--marker-color, #e1fdff); white-space: nowrap;
+  text-shadow: var(--marker-label-shadow); letter-spacing: 0.04em;
+  pointer-events: none;
+}
+.aircraft-marker-pulse {
+  position: absolute; width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid var(--marker-color, #00dbe7);
+  animation: pulseRing 2s ease-in-out infinite;
+}
+
+/* ─── Route arc animation ─────────────────────────────────────────────────── */
+@keyframes dashFlow { to { stroke-dashoffset: -40; } }
+.route-line-animated { animation: dashFlow 1.2s linear infinite; }
+
+/* ─── Live location ring ──────────────────────────────────────────────────── */
+.live-location-ring { filter: drop-shadow(0 0 16px rgba(98, 255, 150, 0.75)); }
+
+/* ─── Glass panel ─────────────────────────────────────────────────────────── */
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+/* ─── Range slider ────────────────────────────────────────────────────────── */
+input[type="range"] { accent-color: var(--color-primary-container); }
+
+/* ─── Aircraft card selected ──────────────────────────────────────────────── */
+.aircraft-card-selected {
+  border-color: var(--color-primary-container) !important;
+  background: rgba(0, 242, 255, 0.08) !important;
+}
+
+/* ─── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+
+/* ─── Keyframes ───────────────────────────────────────────────────────────── */
+@keyframes pulseRing {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50%       { opacity: 0.2; transform: scale(1.6); }
+}
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.stat-count { animation: countUp 0.4s ease; }
+
+@keyframes toastIn {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+.toast-enter { animation: toastIn 0.35s cubic-bezier(0.22,1,0.36,1); }
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.drawer-enter { animation: slideUp 0.35s cubic-bezier(0.22,1,0.36,1); }
+
+@keyframes radarSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.radar-spinning { animation: radarSpin 1s linear infinite; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.25s ease; }

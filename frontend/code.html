@@ -16,14 +16,21 @@
     .leaflet-container { background: #061422; font-family: "Hanken Grotesk", sans-serif; }
     .leaflet-control-attribution { display: none; }
     .aircraft-marker { width: 34px; height: 34px; display: grid; place-items: center; color: #e1fdff; filter: drop-shadow(0 0 10px rgba(0, 219, 231, 0.75)); transition: transform 350ms ease; }
-    .aircraft-marker .material-symbols-outlined { font-size: 30px; transform: rotate(var(--heading, 0deg)); }
+    .aircraft-marker .material-symbols-outlined { font-size: 30px; transform: rotate(var(--heading, 0deg)); transition: transform 0.8s ease; }
     .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: rgba(15, 29, 42, 0.95); color: #d6e4f7; border: 1px solid rgba(0, 219, 231, 0.25); box-shadow: 0 0 24px rgba(0, 219, 231, 0.12); }
     .leaflet-popup-content { margin: 14px; min-width: 210px; }
     .sigmet-severe { stroke: #ffb4ab; fill: #ffb4ab; }
     .sigmet-extreme { stroke: #ff4f5e; fill: #ff4f5e; }
     .sigmet-moderate { stroke: #ffca7a; fill: #ffca7a; }
     .sigmet-advisory { stroke: #b8c3ff; fill: #b8c3ff; }
+    .live-location-ring { filter: drop-shadow(0 0 16px rgba(98, 255, 150, 0.75)); }
     .range { accent-color: #00dbe7; }
+    @keyframes dashFlow { to { stroke-dashoffset: -40; } }
+    .route-line-animated { animation: dashFlow 1.2s linear infinite; }
+    .airport-pin { width: 28px; height: 34px; display: flex; flex-direction: column; align-items: center; }
+    .airport-pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2.5px solid #061422; box-shadow: 0 0 10px currentColor; }
+    .airport-pin-stem { width: 2px; flex: 1; background: currentColor; opacity: 0.7; }
+    .aircraft-card-selected { border-color: rgba(0,242,255,0.6) !important; background: rgba(0,242,255,0.08) !important; }
   </style>
   <script id="tailwind-config">
     tailwind.config = {
@@ -62,7 +69,7 @@
 <body class="bg-background text-on-surface font-body overflow-hidden">
   <header class="fixed top-0 left-0 w-full z-[1000] flex justify-between items-center px-gutter h-16 bg-surface/70 backdrop-blur-xl border-b border-white/10">
     <div class="flex items-center gap-4">
-      <span class="font-display text-2xl font-semibold text-primary tracking-tight">AERO_TRACK</span>
+      <span class="font-display text-2xl font-semibold text-primary tracking-tight">AERO TRACK</span>
       <span id="connection-state" class="font-mono text-xs text-tertiary-fixed bg-white/5 px-3 py-1 rounded-full">CONNECTING</span>
     </div>
     <div class="flex items-center gap-4">
@@ -88,7 +95,7 @@
           <button id="refresh-now" class="p-3 rounded-lg text-on-surface-variant hover:text-primary hover:bg-white/5 transition-all" title="Refresh aircraft">
             <span class="material-symbols-outlined text-3xl">radar</span>
           </button>
-          <button id="locate-india" class="p-3 rounded-lg text-on-surface-variant hover:text-primary hover:bg-white/5 transition-all" title="India overview">
+          <button id="locate-us" class="p-3 rounded-lg text-on-surface-variant hover:text-primary hover:bg-white/5 transition-all" title="US overview">
             <span class="material-symbols-outlined text-3xl">navigation</span>
           </button>
         </div>
@@ -96,6 +103,36 @@
           <div id="sigmet-dot" class="w-3 h-3 rounded-full bg-tertiary-fixed shadow-[0_0_10px_rgba(98,255,150,0.5)]"></div>
           <span id="sigmet-status" class="font-mono text-xs text-primary">SIGMET: ACTIVE</span>
         </div>
+      </div>
+
+      <div class="absolute right-6 bottom-6 z-[800] flex flex-col items-end gap-3">
+        <div id="legend-panel" class="hidden glass-panel rounded-xl p-4 w-[260px] text-xs">
+          <div class="font-mono text-on-surface-variant tracking-widest mb-3">MAP LEGEND</div>
+          <div class="grid gap-3">
+          <div>
+            <div class="font-display text-primary mb-2">SIGMET Severity</div>
+            <div class="grid grid-cols-2 gap-2 text-on-surface-variant">
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-[#ff4f5e]"></span><span>Extreme</span></div>
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-[#ff8a80]"></span><span>Severe</span></div>
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-[#ffca7a]"></span><span>Moderate</span></div>
+              <div class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm bg-[#b8c3ff]"></span><span>Advisory</span></div>
+            </div>
+          </div>
+          <div>
+            <div class="font-display text-primary mb-2">Weather Hazards</div>
+            <div class="flex flex-wrap gap-1.5">
+              <span class="px-2 py-1 rounded bg-white/5 text-on-surface-variant">Thunderstorm</span>
+              <span class="px-2 py-1 rounded bg-white/5 text-on-surface-variant">Fog</span>
+              <span class="px-2 py-1 rounded bg-white/5 text-on-surface-variant">Icing</span>
+              <span class="px-2 py-1 rounded bg-white/5 text-on-surface-variant">Turbulence</span>
+              <span class="px-2 py-1 rounded bg-white/5 text-on-surface-variant">Volcanic ash</span>
+            </div>
+          </div>
+          </div>
+        </div>
+        <button id="toggle-legend" class="glass-panel p-3 rounded-lg text-primary border border-primary/30 hover:bg-primary/10 transition-all" title="Toggle map legend">
+          <span class="material-symbols-outlined text-3xl">info</span>
+        </button>
       </div>
     </section>
 
@@ -137,6 +174,7 @@
               <div>
                 <div id="weather-title" class="text-xl font-display text-primary">SIGMET Monitor</div>
                 <div id="weather-subtitle" class="text-xs text-on-surface-variant">Awaiting AviationWeather data</div>
+                <div id="weather-hazard" class="text-[10px] font-mono text-tertiary-fixed mt-1">Awaiting hazard data</div>
               </div>
             </div>
               <div class="space-y-4">
@@ -164,16 +202,50 @@
                 <span class="text-sm text-on-surface-variant">Active SIGMETs</span>
                 <span id="sigmet-count" class="font-mono text-primary">0</span>
               </div>
-              <div class="pt-2">
-                <div class="flex justify-between items-center mb-2">
-                  <span class="text-[10px] font-mono text-on-surface-variant">POLLING CADENCE</span>
-                  <span class="text-[10px] font-mono text-tertiary-fixed">5 SEC</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="route-panel" class="hidden flex-col gap-3">
+          <h3 class="text-xs font-mono text-on-surface-variant tracking-widest">ACTIVE ROUTE</h3>
+          <div class="glass-panel rounded-xl p-4 flex flex-col gap-3">
+            <div class="flex items-center gap-3">
+              <div class="flex flex-col items-center gap-1">
+                <div class="w-3 h-3 rounded-full bg-[#ffca7a] shadow-[0_0_8px_#ffca7a]"></div>
+                <div class="w-0.5 h-8 bg-[#00f2ff]/40"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-[#62ff96] shadow-[0_0_8px_#62ff96] border-2 border-[#061422]"></div>
+                <div class="w-0.5 h-8 bg-[#00f2ff]/40"></div>
+                <div class="w-3 h-3 rounded-full bg-[#ffca7a] shadow-[0_0_8px_#ffca7a]"></div>
+              </div>
+              <div class="flex flex-col gap-2 flex-1 min-w-0">
+                <div>
+                  <div id="route-origin-code" class="font-mono text-sm text-[#ffca7a]">---</div>
+                  <div id="route-origin-name" class="text-xs text-on-surface-variant truncate">Origin Airport</div>
                 </div>
-                <div class="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-                  <div id="poll-progress" class="bg-primary-container h-full w-0 transition-all duration-1000"></div>
+                <div class="text-center">
+                  <span id="route-callsign" class="font-display text-primary text-xs bg-primary/10 px-2 py-0.5 rounded-full">--</span>
+                </div>
+                <div class="text-right">
+                  <div id="route-dest-code" class="font-mono text-sm text-[#ffca7a]">---</div>
+                  <div id="route-dest-name" class="text-xs text-on-surface-variant truncate">Destination Airport</div>
                 </div>
               </div>
             </div>
+            <div class="grid grid-cols-3 gap-2 pt-2 border-t border-white/5">
+              <div class="text-center">
+                <div id="route-alt" class="font-mono text-xs text-primary">--</div>
+                <div class="text-[9px] font-mono text-on-surface-variant mt-0.5">ALT FT</div>
+              </div>
+              <div class="text-center">
+                <div id="route-spd" class="font-mono text-xs text-primary">--</div>
+                <div class="text-[9px] font-mono text-on-surface-variant mt-0.5">SPEED KT</div>
+              </div>
+              <div class="text-center">
+                <div id="route-hdg" class="font-mono text-xs text-primary">--</div>
+                <div class="text-[9px] font-mono text-on-surface-variant mt-0.5">HDG DEG</div>
+              </div>
+            </div>
+            <button id="clear-route-btn" class="w-full text-xs font-mono text-on-surface-variant hover:text-error transition-colors pt-1">✕ Clear Route</button>
           </div>
         </section>
 
@@ -188,24 +260,28 @@
   <script>
     const LOCAL_HOSTS = new Set(["", "localhost", "127.0.0.1"]);
     const API_BASE = window.AERO_API_BASE || (LOCAL_HOSTS.has(window.location.hostname) ? "http://127.0.0.1:8000" : "");
-    const POLL_MS = 5000;
+    const POLL_MS = 600000;
     const state = {
       markers: new Map(),
       flights: [],
       sigmetLayer: null,
       sigmetsVisible: true,
+      selectedIcao: null,
+      selectedLocationLayer: null,
+      selectedRouteLayer: null,
+      selectedRouteAnimation: null,
       aborter: null,
       inFlight: false,
       lastBoundsKey: "",
       pollTimer: null
     };
 
-    const INDIA_CENTER = [22.5, 78.9];
-    const INDIA_ZOOM = 6;
-    const INDIA_BBOX = { lamin: 6, lomin: 68, lamax: 37.5, lomax: 97.5 };
+    const US_CENTER = [39.5, -98.35];
+    const US_ZOOM = 5;
+    const US_BBOX = { lamin: 24, lomin: -125, lamax: 50, lomax: -66 };
     const MAX_CLIENT_BBOX_AREA = 1800;
-    const INDIA_METAR_STATIONS = "VIDP,VABB,VOBL,VOMM,VOHS,VECC,VAAH";
-    const map = L.map("map", { zoomControl: false, preferCanvas: true }).setView(INDIA_CENTER, INDIA_ZOOM);
+    const US_METAR_STATIONS = "KJFK,KLAX,KORD,KATL,KDFW,KDEN,KSFO,KMIA";
+    const map = L.map("map", { zoomControl: false, preferCanvas: true }).setView(US_CENTER, US_ZOOM);
     L.control.zoom({ position: "topright" }).addTo(map);
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 12,
@@ -230,7 +306,7 @@
       metarTemp: document.getElementById("metar-temp"),
       metarAltimeter: document.getElementById("metar-altimeter"),
       metarCategory: document.getElementById("metar-category"),
-      pollProgress: document.getElementById("poll-progress")
+      weatherHazard: document.getElementById("weather-hazard")
     };
 
     function formatNumber(value) {
@@ -239,13 +315,13 @@
 
     function boundsParams() {
       const b = map.getBounds();
-      const south = Math.max(INDIA_BBOX.lamin, b.getSouth());
-      const west = Math.max(INDIA_BBOX.lomin, b.getWest());
-      const north = Math.min(INDIA_BBOX.lamax, b.getNorth());
-      const east = Math.min(INDIA_BBOX.lomax, b.getEast());
+      const south = Math.max(US_BBOX.lamin, b.getSouth());
+      const west = Math.max(US_BBOX.lomin, b.getWest());
+      const north = Math.min(US_BBOX.lamax, b.getNorth());
+      const east = Math.min(US_BBOX.lomax, b.getEast());
       const area = (north - south) * (east - west);
       if (south >= north || west >= east || area > MAX_CLIENT_BBOX_AREA) {
-        return INDIA_BBOX;
+        return US_BBOX;
       }
       return {
         lamin: south.toFixed(5),
@@ -274,12 +350,65 @@
     }
 
     function flightsUrl() {
-      return `${API_BASE}/api/flights?t=${Date.now()}`;
+      const bbox = boundsParams();
+      const params = new URLSearchParams({ ...bbox, t: Date.now() });
+      return `${API_BASE}/api/flights/region?${params}`;
+    }
+
+    function aircraftUrl(flight) {
+      const params = new URLSearchParams({
+        latitude: flight.latitude,
+        longitude: flight.longitude,
+        t: Date.now()
+      });
+      return `${API_BASE}/api/flights/aircraft/${encodeURIComponent(flight.icao24)}?${params}`;
+    }
+
+    // lat/lon are passed explicitly so callers can use live marker position
+    function aircraftRouteUrl(icao24, latitude, longitude) {
+      const params = new URLSearchParams({ latitude, longitude, t: Date.now() });
+      return `${API_BASE}/api/flights/aircraft/${encodeURIComponent(icao24)}/route?${params}`;
+    }
+
+    // Compute the forward bearing (0-360°, clockwise from north) from point A to point B.
+    // This is the true great-circle initial bearing — what a compass would read at point A
+    // when heading toward point B.
+    function bearingTo(lat1, lon1, lat2, lon2) {
+      const toR = Math.PI / 180;
+      const φ1 = lat1 * toR, φ2 = lat2 * toR;
+      const Δλ = (lon2 - lon1) * toR;
+      const x = Math.sin(Δλ) * Math.cos(φ2);
+      const y = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+      return (Math.atan2(x, y) * 180 / Math.PI + 360) % 360;
+    }
+
+    function flightBearing(flight) {
+      // Priority 1: compute from origin → destination (most accurate, independent per flight)
+      const oLat = flight.origin_latitude, oLon = flight.origin_longitude;
+      const dLat = flight.destination_latitude, dLon = flight.destination_longitude;
+      if (oLat != null && oLon != null && dLat != null && dLon != null) {
+        return bearingTo(oLat, oLon, dLat, dLon);
+      }
+      // Priority 2: compute from current position → destination
+      if (dLat != null && dLon != null) {
+        return bearingTo(flight.latitude, flight.longitude, dLat, dLon);
+      }
+      // Priority 3: compute from origin → current position
+      if (oLat != null && oLon != null) {
+        return bearingTo(oLat, oLon, flight.latitude, flight.longitude);
+      }
+      // Priority 4: live heading from AirLabs data
+      if (Number.isFinite(flight.heading) && flight.heading !== 0) {
+        return flight.heading;
+      }
+      return 0;
     }
 
     function markerHtml(flight) {
-      const heading = Number.isFinite(flight.heading) ? flight.heading : 0;
-      return `<div class="aircraft-marker" style="--heading:${heading - 45}deg"><span class="material-symbols-outlined">flight</span></div>`;
+      // The Material 'flight' icon faces northeast (45°) by default.
+      // Subtract 45 so that bearing=0 (north) means the icon points straight up.
+      const bearing = flightBearing(flight);
+      return `<div class="aircraft-marker" style="--heading:${bearing - 45}deg"><span class="material-symbols-outlined">flight</span></div>`;
     }
 
     function popupHtml(flight) {
@@ -288,6 +417,8 @@
           <div class="font-display text-lg text-primary">${flight.callsign || flight.icao24.toUpperCase()}</div>
           <div class="font-mono text-xs text-on-surface-variant">${flight.icao24.toUpperCase()} | ${flight.country || "Unknown"}</div>
           <div class="mt-3 grid grid-cols-2 gap-2 font-mono text-xs">
+            <span>LAT</span><span class="text-primary text-right">${Number(flight.latitude).toFixed(4)}</span>
+            <span>LON</span><span class="text-primary text-right">${Number(flight.longitude).toFixed(4)}</span>
             <span>ALT</span><span class="text-primary text-right">${formatNumber(flight.altitude_ft)} FT</span>
             <span>SPD</span><span class="text-primary text-right">${formatNumber(flight.velocity_kts)} KT</span>
             <span>HDG</span><span class="text-primary text-right">${formatNumber(flight.heading)} DEG</span>
@@ -304,13 +435,19 @@
         const icon = L.divIcon({ html: markerHtml(flight), className: "", iconSize: [34, 34], iconAnchor: [17, 17] });
         const existing = state.markers.get(flight.icao24);
         if (existing) {
-          existing.setLatLng(latlng);
+          animateMarker(existing, latlng);
           existing.setIcon(icon);
           existing.setPopupContent(popupHtml(flight));
         } else {
           const marker = L.marker(latlng, { icon }).bindPopup(popupHtml(flight));
+          marker.on("click", () => {
+            focusFlight(flight.icao24);
+          });
           marker.addTo(map);
           state.markers.set(flight.icao24, marker);
+        }
+        if (state.selectedIcao === flight.icao24) {
+          updateSelectedLocation(flight);
         }
       }
       for (const [icao24, marker] of state.markers.entries()) {
@@ -319,6 +456,33 @@
           state.markers.delete(icao24);
         }
       }
+    }
+
+    function animateMarker(marker, nextLatLng, durationMs = Math.min(POLL_MS * 0.9, 90000)) {
+      const from = marker.getLatLng();
+      const to = L.latLng(nextLatLng);
+      const started = performance.now();
+      cancelAnimationFrame(marker._aeroAnimation);
+      function step(now) {
+        const progress = Math.min((now - started) / durationMs, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        marker.setLatLng([
+          from.lat + (to.lat - from.lat) * eased,
+          from.lng + (to.lng - from.lng) * eased
+        ]);
+        if (progress < 1) {
+          marker._aeroAnimation = requestAnimationFrame(step);
+        }
+      }
+      marker._aeroAnimation = requestAnimationFrame(step);
+    }
+
+    function routeTag(flight) {
+      const dep = flight.origin_iata || flight.origin_icao;
+      const arr = flight.destination_iata || flight.destination_icao;
+      if (!dep && !arr) return "";
+      const parts = [dep || "???", arr || "???"];
+      return `<div class="mt-1.5 font-mono text-[10px] text-[#00f2ff]/70 tracking-wider">${parts[0]} &#x2192; ${parts[1]}</div>`;
     }
 
     function updateAircraftPanel(flights) {
@@ -336,17 +500,322 @@
             <span>${flight.country || "Unknown"}</span>
             <span>${formatNumber(flight.altitude_ft)} FT</span>
           </div>
+          ${routeTag(flight)}
         </button>
       `).join("");
       els.aircraftList.querySelectorAll("button[data-icao]").forEach((button) => {
-        button.addEventListener("click", () => {
-          const marker = state.markers.get(button.dataset.icao);
-          if (marker) {
-            map.panTo(marker.getLatLng(), { animate: true, duration: 0.5 });
-            marker.openPopup();
-          }
+        button.addEventListener("click", async () => {
+          await focusFlight(button.dataset.icao);
         });
+        // Re-apply selection highlight after the list is rebuilt
+        if (button.dataset.icao === state.selectedIcao) {
+          button.classList.add("aircraft-card-selected");
+        }
       });
+    }
+
+    async function focusFlight(icao24) {
+      let flight = state.flights.find((item) => item.icao24 === icao24);
+      if (!flight) {
+        await fetchFlights(true);
+        flight = state.flights.find((item) => item.icao24 === icao24);
+      }
+      if (!flight) return;
+
+      state.selectedIcao = icao24;
+
+      // Use the Leaflet marker's live position if available — it is continuously
+      // animated and will be closer to the aircraft's real current location than
+      // the last polled position stored in state.flights.
+      const marker = state.markers.get(icao24);
+      let lat = flight.latitude;
+      let lon = flight.longitude;
+      if (marker) {
+        const ll = marker.getLatLng();
+        lat = ll.lat;
+        lon = ll.lng;
+      }
+
+      els.loading.textContent = `Fetching route for ${flight.callsign || icao24.toUpperCase()}…`;
+      els.loading.classList.remove("hidden");
+
+      let routeSuccess = false;
+      try {
+        const route = await fetchAircraftRoute(icao24, lat, lon);
+        flight = route.aircraft;
+        drawRoute(route);          // fitBounds is called inside drawRoute
+        placeAircraftAtCoordinate(route.aircraft);
+        routeSuccess = true;
+      } catch (error) {
+        console.warn("Route fetch failed:", error.message);
+        clearRoute();
+        // Show a brief on-map message so the user understands why no arc appeared
+        showBriefBanner(
+          error.message.includes("404")
+            ? `No route data available for ${flight.callsign || icao24.toUpperCase()} — airport coordinates unknown`
+            : `Route unavailable: ${error.message}`,
+          4000
+        );
+        try {
+          flight = await fetchAircraft(flight);
+        } catch (aircraftError) {
+          console.error("Aircraft refresh also failed:", aircraftError);
+        }
+      } finally {
+        els.loading.classList.add("hidden");
+        els.loading.textContent = "Loading live aircraft...";
+      }
+
+      updateSelectedLocation(flight);
+
+      // Only flyTo if drawRoute didn't already fitBounds
+      if (!routeSuccess) {
+        map.flyTo([flight.latitude, flight.longitude], Math.max(map.getZoom(), 8), {
+          animate: true, duration: 0.8, easeLinearity: 0.2
+        });
+      }
+
+      if (marker) marker.openPopup();
+    }
+
+    function showBriefBanner(text, durationMs = 3000) {
+      els.loading.textContent = text;
+      els.loading.classList.remove("hidden");
+      setTimeout(() => {
+        els.loading.classList.add("hidden");
+        els.loading.textContent = "Loading live aircraft...";
+      }, durationMs);
+    }
+
+    async function fetchAircraft(flight) {
+      const response = await fetch(aircraftUrl(flight));
+      if (!response.ok) throw new Error(`Aircraft API ${response.status}`);
+      const freshFlight = await response.json();
+      mergeFlight(freshFlight);
+      return freshFlight;
+    }
+
+    async function fetchAircraftRoute(icao24, latitude, longitude) {
+      const response = await fetch(aircraftRouteUrl(icao24, latitude, longitude));
+      if (!response.ok) {
+        // Include status so caller can distinguish 404 (no route data) from 5xx (server error)
+        throw new Error(`Route API ${response.status}`);
+      }
+      const route = await response.json();
+      mergeFlight(route.aircraft);
+      return route;
+    }
+
+    function mergeFlight(flight) {
+      const index = state.flights.findIndex((item) => item.icao24 === flight.icao24);
+      if (index >= 0) {
+        state.flights[index] = flight;
+      } else {
+        state.flights.unshift(flight);
+      }
+      const visibleFlights = filteredFlights(state.flights);
+      updateMarkers(visibleFlights);
+      updateAircraftPanel(visibleFlights);
+    }
+
+    // --- Geodesic helpers ---
+    function toRad(deg) { return deg * Math.PI / 180; }
+    function toDeg(rad) { return rad * 180 / Math.PI; }
+
+    // Interpolate N intermediate great-circle points between two lat/lon pairs
+    function geodesicSegment(lat1, lon1, lat2, lon2, steps = 80) {
+      const φ1 = toRad(lat1), λ1 = toRad(lon1);
+      const φ2 = toRad(lat2), λ2 = toRad(lon2);
+      const Δφ = φ2 - φ1, Δλ = λ2 - λ1;
+      const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+      const d = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); // angular distance
+      if (d < 0.001) return [[lat1, lon1], [lat2, lon2]];
+      const pts = [];
+      for (let i = 0; i <= steps; i++) {
+        const f = i / steps;
+        const A = Math.sin((1-f)*d) / Math.sin(d);
+        const B = Math.sin(f*d) / Math.sin(d);
+        const x = A*Math.cos(φ1)*Math.cos(λ1) + B*Math.cos(φ2)*Math.cos(λ2);
+        const y = A*Math.cos(φ1)*Math.sin(λ1) + B*Math.cos(φ2)*Math.sin(λ2);
+        const z = A*Math.sin(φ1)               + B*Math.sin(φ2);
+        pts.push([toDeg(Math.atan2(z, Math.sqrt(x*x+y*y))), toDeg(Math.atan2(y, x))]);
+      }
+      return pts;
+    }
+
+    function clearRoute() {
+      if (state.selectedRouteAnimation) {
+        cancelAnimationFrame(state.selectedRouteAnimation);
+        state.selectedRouteAnimation = null;
+      }
+      if (state.selectedRouteLayer) {
+        state.selectedRouteLayer.remove();
+        state.selectedRouteLayer = null;
+      }
+      // hide route panel
+      document.getElementById('route-panel').classList.add('hidden');
+      document.getElementById('route-panel').classList.remove('flex');
+      // deselect aircraft cards
+      document.querySelectorAll('#aircraft-list button[data-icao]').forEach(b => b.classList.remove('aircraft-card-selected'));
+    }
+
+    function showRoutePanel(route) {
+      const aircraft = route.aircraft;
+      const origin = route.points.find(p => p.type === 'origin');
+      const dest = route.points.find(p => p.type === 'destination');
+      document.getElementById('route-origin-code').textContent = origin ? origin.label : (aircraft.origin_iata || aircraft.origin_icao || '---');
+      document.getElementById('route-origin-name').textContent = aircraft.origin_name || 'Origin Airport';
+      document.getElementById('route-dest-code').textContent = dest ? dest.label : (aircraft.destination_iata || aircraft.destination_icao || '---');
+      document.getElementById('route-dest-name').textContent = aircraft.destination_name || 'Destination Airport';
+      document.getElementById('route-callsign').textContent = aircraft.callsign || aircraft.icao24.toUpperCase();
+      document.getElementById('route-alt').textContent = aircraft.altitude_ft != null ? aircraft.altitude_ft.toLocaleString() : '--';
+      document.getElementById('route-spd').textContent = aircraft.velocity_kts != null ? aircraft.velocity_kts : '--';
+      document.getElementById('route-hdg').textContent = aircraft.heading != null ? Math.round(aircraft.heading) : '--';
+      const panel = document.getElementById('route-panel');
+      panel.classList.remove('hidden');
+      panel.classList.add('flex');
+    }
+
+    function drawRoute(route) {
+      clearRoute();
+      state.selectedRouteLayer = L.layerGroup().addTo(map);
+
+      const points = route.points;
+      const originPt  = points.find(p => p.type === 'origin');
+      const currentPt = points.find(p => p.type === 'current');
+      const destPt    = points.find(p => p.type === 'destination');
+
+      // Build geodesic arc for a segment (returns [[lat,lon],…])
+      function arc(a, b, steps = 100) {
+        return geodesicSegment(a.latitude, a.longitude, b.latitude, b.longitude, steps);
+      }
+
+      // ── Segment 1: FLOWN  (origin → current)  ──────────────────────────────
+      if (originPt && currentPt) {
+        const flownArc = arc(originPt, currentPt, 100);
+
+        // Glow underline
+        L.polyline(flownArc, {
+          color: '#b9cacb', weight: 6, opacity: 0.10
+        }).addTo(state.selectedRouteLayer);
+
+        // Dim dashed line = already-flown path
+        L.polyline(flownArc, {
+          color: '#b9cacb', weight: 1.5, opacity: 0.45,
+          dashArray: '6 10'
+        }).addTo(state.selectedRouteLayer);
+      }
+
+      // ── Segment 2: REMAINING  (current → destination)  ─────────────────────
+      if (currentPt && destPt) {
+        const remArc = arc(currentPt, destPt, 100);
+
+        // Glow underline
+        L.polyline(remArc, {
+          color: '#00f2ff', weight: 10, opacity: 0.10
+        }).addTo(state.selectedRouteLayer);
+
+        // Bright animated dash = path still to fly
+        L.polyline(remArc, {
+          color: '#00f2ff', weight: 2.5, opacity: 0.95,
+          dashArray: '14 8', className: 'route-line-animated'
+        }).addTo(state.selectedRouteLayer);
+      }
+
+      // If only one segment exists draw it fully
+      if (!originPt && currentPt && destPt) {
+        /* already drawn above */
+      } else if (originPt && currentPt && !destPt) {
+        /* already drawn above */
+      }
+
+      // ── Waypoint markers ────────────────────────────────────────────────────
+      function airportMarker(pt, emoji) {
+        const icon = L.divIcon({
+          className: '',
+          iconSize: [50, 42],
+          iconAnchor: [25, 38],
+          html: `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">
+            <div style="font-size:18px;line-height:1;filter:drop-shadow(0 0 6px #ffca7a)">${emoji}</div>
+            <div style="font-size:10px;font-family:'JetBrains Mono',monospace;font-weight:600;
+                        color:#ffca7a;white-space:nowrap;letter-spacing:0.05em;
+                        text-shadow:0 0 8px #061422,0 0 4px #061422;
+                        background:rgba(6,20,34,0.82);padding:1px 5px;border-radius:3px;
+                        border:1px solid rgba(255,202,122,0.4)">${pt.label}</div>
+          </div>`
+        });
+        return L.marker([pt.latitude, pt.longitude], { icon });
+      }
+
+      if (originPt) {
+        airportMarker(originPt, '🛫')
+          .bindTooltip(`ORIGIN: ${originPt.label}`, { permanent: false, direction: 'top' })
+          .addTo(state.selectedRouteLayer);
+      }
+
+      if (destPt) {
+        airportMarker(destPt, '🛬')
+          .bindTooltip(`DEST: ${destPt.label}`, { permanent: false, direction: 'top' })
+          .addTo(state.selectedRouteLayer);
+      }
+
+      if (currentPt) {
+        L.circleMarker([currentPt.latitude, currentPt.longitude], {
+          radius: 7, color: '#62ff96', fillColor: '#62ff96',
+          fillOpacity: 1, weight: 2.5
+        }).bindTooltip(`✈ ${currentPt.label}  (live)`, { permanent: false, direction: 'top' })
+          .addTo(state.selectedRouteLayer);
+      }
+
+      // ── Fit map to the full route ────────────────────────────────────────────
+      const allCoords = points.map(p => [p.latitude, p.longitude]);
+      map.fitBounds(L.latLngBounds(allCoords), { padding: [90, 110], maxZoom: 7 });
+
+      // ── Sidebar panel ────────────────────────────────────────────────────────
+      showRoutePanel(route);
+
+      // ── Selection highlight on aircraft card ─────────────────────────────────
+      document.querySelectorAll('#aircraft-list button[data-icao]').forEach(b => {
+        b.classList.toggle('aircraft-card-selected', b.dataset.icao === route.aircraft.icao24);
+      });
+    }
+
+    function placeAircraftAtCoordinate(aircraft) {
+      const marker = state.markers.get(aircraft.icao24);
+      if (!marker) return;
+      cancelAnimationFrame(marker._aeroAnimation);
+      cancelAnimationFrame(state.selectedRouteAnimation);
+      animateMarker(marker, [aircraft.latitude, aircraft.longitude], 1200);
+      marker.setPopupContent(popupHtml(aircraft));
+      marker.openPopup();
+      updateSelectedLocation(aircraft);
+    }
+
+    function updateSelectedLocation(flight) {
+      const latlng = [flight.latitude, flight.longitude];
+      if (!state.selectedLocationLayer) {
+        state.selectedLocationLayer = L.layerGroup().addTo(map);
+      }
+      state.selectedLocationLayer.clearLayers();
+      L.circle(latlng, {
+        radius: 18000,
+        color: "#62ff96",
+        fillColor: "#62ff96",
+        fillOpacity: 0.08,
+        weight: 2,
+        opacity: 0.9,
+        className: "live-location-ring"
+      }).addTo(state.selectedLocationLayer);
+      L.circleMarker(latlng, {
+        radius: 6,
+        color: "#e1fdff",
+        fillColor: "#62ff96",
+        fillOpacity: 1,
+        weight: 2
+      }).bindTooltip(
+        `${flight.callsign || flight.icao24.toUpperCase()} live position`,
+        { permanent: false, direction: "top" }
+      ).addTo(state.selectedLocationLayer);
     }
 
     async function fetchFlights(force = false) {
@@ -384,8 +853,38 @@
     }
 
     function sigmetStyle(feature) {
-      const severity = (feature.properties?.severity || inferSeverity(feature.properties)).toLowerCase();
-      return { className: `sigmet-${severity}`, color: "#ffb4ab", weight: 2, opacity: 0.9, fillOpacity: 0.16 };
+      const severity = normalizeSigmetSeverity(feature.properties);
+      const colors = {
+        extreme: "#ff4f5e",
+        severe: "#ff8a80",
+        moderate: "#ffca7a",
+        advisory: "#b8c3ff"
+      };
+      const color = colors[severity] || colors.advisory;
+      return {
+        className: `sigmet-${severity}`,
+        color,
+        fillColor: color,
+        weight: severity === "extreme" ? 4 : 3,
+        opacity: 0.95,
+        fillOpacity: severity === "advisory" ? 0.16 : 0.3,
+        dashArray: severity === "advisory" ? "6 6" : null
+      };
+    }
+
+    function normalizeSigmetSeverity(properties = {}) {
+      const value = properties.severity;
+      if (typeof value === "number") {
+        if (value >= 6) return "extreme";
+        if (value >= 4) return "severe";
+        if (value >= 2) return "moderate";
+        return "advisory";
+      }
+      if (typeof value === "string" && value.trim()) {
+        const lowered = value.toLowerCase();
+        if (["extreme", "severe", "moderate", "advisory"].includes(lowered)) return lowered;
+      }
+      return inferSeverity(properties);
     }
 
     function inferSeverity(properties = {}) {
@@ -396,34 +895,71 @@
       return "advisory";
     }
 
+    function extractHazards(feature) {
+      const text = JSON.stringify(feature.properties || {}).toLowerCase();
+      const hazards = [];
+      if (text.includes("thunderstorm") || text.includes("convective") || text.includes(" ts ")) hazards.push("Thunderstorm");
+      if (text.includes("fog")) hazards.push("Fog");
+      if (text.includes("hail")) hazards.push("Hail");
+      if (text.includes("icing") || text.includes(" ice ")) hazards.push("Icing");
+      if (text.includes("turbulence") || text.includes("turb")) hazards.push("Turbulence");
+      if (text.includes("ash") || text.includes("volcanic")) hazards.push("Volcanic ash");
+      if (text.includes("dust")) hazards.push("Dust");
+      return hazards;
+    }
+
     async function fetchSigmets() {
       try {
         const response = await fetch(`${API_BASE}/api/weather/sigmets`);
         if (!response.ok) throw new Error(`SIGMET API ${response.status}`);
         const payload = await response.json();
+        const features = (payload.geojson?.features || []).filter(featureIntersectsUsBbox);
+        const geojson = { ...(payload.geojson || { type: "FeatureCollection" }), features };
         if (state.sigmetLayer) state.sigmetLayer.remove();
-        state.sigmetLayer = L.geoJSON(payload.geojson, {
+        state.sigmetLayer = L.geoJSON(geojson, {
           style: sigmetStyle,
           onEachFeature: (feature, layer) => {
             const props = feature.properties || {};
-            layer.bindPopup(`<div class="font-mono text-xs">${props.rawText || props.hazard || "Active SIGMET"}</div>`);
+            const popupHazards = extractHazards(feature);
+            const popupText = popupHazards.length
+              ? popupHazards.join(" • ")
+              : props.hazard || props.type || "SIGMET";
+            layer.bindPopup(`<div class="font-mono text-xs whitespace-pre-wrap">${popupText}</div>`);
           }
         });
         if (state.sigmetsVisible) state.sigmetLayer.addTo(map);
-        els.sigmetCount.textContent = String(payload.count || 0);
-        if (!els.weatherSubtitle.textContent.includes("METAR")) {
-          els.weatherSubtitle.textContent = payload.count ? "SIGMET overlay loaded" : "No active SIGMET polygons";
-        }
-        els.sigmetStatus.textContent = `SIGMET: ${payload.count || 0}`;
+        const hazardSet = new Set(features.flatMap(extractHazards));
+        const hazardText = hazardSet.size ? Array.from(hazardSet).join(" • ") : "No listed weather hazards detected";
+        els.sigmetCount.textContent = String(features.length);
+        els.weatherHazard.textContent = hazardText;
+        els.sigmetStatus.textContent = `SIGMET: ${features.length}`;
       } catch (error) {
         els.sigmetStatus.textContent = "SIGMET: DEGRADED";
+        els.weatherSubtitle.textContent = "SIGMET feed unavailable";
         console.error(error);
       }
     }
 
+    function featureIntersectsUsBbox(feature) {
+      const coordinates = [];
+      collectCoordinates(feature.geometry?.coordinates, coordinates);
+      return coordinates.some(([lon, lat]) => (
+        lat >= US_BBOX.lamin && lat <= US_BBOX.lamax && lon >= US_BBOX.lomin && lon <= US_BBOX.lomax
+      ));
+    }
+
+    function collectCoordinates(value, coordinates) {
+      if (!Array.isArray(value)) return;
+      if (typeof value[0] === "number" && typeof value[1] === "number") {
+        coordinates.push(value);
+        return;
+      }
+      value.forEach((child) => collectCoordinates(child, coordinates));
+    }
+
     async function fetchMetars() {
       try {
-        const response = await fetch(`${API_BASE}/api/weather/metars?ids=${INDIA_METAR_STATIONS}`);
+        const response = await fetch(`${API_BASE}/api/weather/metars?ids=${US_METAR_STATIONS}`);
         if (!response.ok) throw new Error(`METAR API ${response.status}`);
         const payload = await response.json();
         const report = (payload.observations || [])[0];
@@ -450,11 +986,6 @@
       clearInterval(state.pollTimer);
       fetchFlights(true);
       state.pollTimer = setInterval(() => fetchFlights(false), POLL_MS);
-      let progress = 0;
-      setInterval(() => {
-        progress = (progress + 20) % 120;
-        els.pollProgress.style.width = `${Math.min(progress, 100)}%`;
-      }, 1000);
     }
 
     map.on("moveend", () => {
@@ -473,12 +1004,25 @@
       updateAircraftPanel(visibleFlights);
     });
     document.getElementById("refresh-now").addEventListener("click", () => fetchFlights(true));
-    document.getElementById("locate-india").addEventListener("click", () => map.setView(INDIA_CENTER, INDIA_ZOOM));
+    document.getElementById("locate-us").addEventListener("click", () => map.setView(US_CENTER, US_ZOOM));
+    document.getElementById("clear-route-btn").addEventListener("click", () => {
+      clearRoute();
+      state.selectedIcao = null;
+      if (state.selectedLocationLayer) {
+        state.selectedLocationLayer.clearLayers();
+      }
+    });
     document.getElementById("toggle-sigmets").addEventListener("click", () => {
       state.sigmetsVisible = !state.sigmetsVisible;
       if (!state.sigmetLayer) return;
       if (state.sigmetsVisible) state.sigmetLayer.addTo(map);
       else state.sigmetLayer.remove();
+    });
+    document.getElementById("toggle-legend").addEventListener("click", () => {
+      const panel = document.getElementById("legend-panel");
+      const button = document.getElementById("toggle-legend");
+      panel.classList.toggle("hidden");
+      button.classList.toggle("bg-primary/20", !panel.classList.contains("hidden"));
     });
 
     altitudeBounds();

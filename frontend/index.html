@@ -1,0 +1,84 @@
+<!doctype html>
+<html class="dark" lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AERO TRACK | Ops Intelligence</title>
+    <meta name="description" content="Live aviation ops intelligence — real-time flight tracking, SIGMET weather overlays, and METAR data for the US airspace." />
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+
+    <!-- Leaflet CSS + JS (CDN) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <!-- Globe.gl — 3D globe (CDN) -->
+    <script src="https://unpkg.com/globe.gl"></script>
+
+    <!-- Tailwind CSS Play CDN (no npm needed) -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              background:               "var(--color-background)",
+              surface:                  "var(--color-surface)",
+              "surface-container-low":  "var(--color-surface-container-low)",
+              "surface-container":      "var(--color-surface-container)",
+              "surface-container-high": "var(--color-surface-container-high)",
+              primary:                  "var(--color-primary)",
+              "primary-container":      "var(--color-primary-container)",
+              "on-primary-container":   "var(--color-on-primary-container)",
+              secondary:                "var(--color-secondary)",
+              "on-surface":             "var(--color-on-surface)",
+              "on-surface-variant":     "var(--color-on-surface-variant)",
+              "tertiary-fixed":         "var(--color-tertiary-fixed)",
+              error:                    "var(--color-error)",
+              "error-container":        "var(--color-error-container)",
+              "on-error-container":     "var(--color-on-error-container)",
+              "phase-climb":   "var(--color-phase-climb)",
+              "phase-descend": "var(--color-phase-descend)",
+              "phase-cruise":  "var(--color-phase-cruise)",
+              "phase-ground":  "var(--color-phase-ground)",
+            },
+            borderRadius: {
+              DEFAULT: "0.25rem",
+              lg: "0.5rem",
+              xl: "0.75rem",
+              full: "9999px",
+            },
+            spacing: {
+              gutter: "20px",
+              "margin-safe": "32px",
+              lg: "24px",
+              md: "16px",
+              sm: "8px",
+            },
+            fontFamily: {
+              display: ["Geist", "sans-serif"],
+              body:    ["Hanken Grotesk", "sans-serif"],
+              mono:    ["JetBrains Mono", "monospace"],
+            },
+            animation: {
+              "pulse-ring": "pulseRing 2s ease-in-out infinite",
+              "slide-up":   "slideUp 0.35s cubic-bezier(0.22,1,0.36,1)",
+              "fade-in":    "fadeIn 0.25s ease",
+              "radar-spin": "radarSpin 1s linear infinite",
+              "toast-in":   "toastIn 0.35s cubic-bezier(0.22,1,0.36,1)",
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
