@@ -2,19 +2,19 @@ import { createContext, useContext, useReducer, useCallback } from "react";
 
 // ─── Altitude band presets ─────────────────────────────────────────────────────
 export const ALT_BANDS = {
-  all:    { label: "ALL",    min: 0,     max: Infinity, icon: "layers"       },
-  ground: { label: "GND",    min: -1,    max: 1000,     icon: "flight_land"  },
-  low:    { label: "<10K",   min: 0,     max: 10000,    icon: "arrow_cool_down" },
-  mid:    { label: "10–35K", min: 10000, max: 35000,    icon: "flight"       },
-  high:   { label: ">35K",   min: 35000, max: 99999,    icon: "flight_takeoff" },
+  all: { label: "ALL", min: 0, max: Infinity, icon: "layers" },
+  ground: { label: "GND", min: -1, max: 1000, icon: "flight_land" },
+  low: { label: "<10K", min: 0, max: 10000, icon: "arrow_cool_down" },
+  mid: { label: "10–35K", min: 10000, max: 35000, icon: "flight" },
+  high: { label: ">35K", min: 35000, max: 99999, icon: "flight_takeoff" },
 };
 
 // ─── Region presets ────────────────────────────────────────────────────────────
 export const REGIONS = {
-  all:     { label: "US-ALL",   lomin: -125, lomax: -66,  center: [39.5, -98.35], zoom: 5 },
-  west:    { label: "WEST",     lomin: -125, lomax: -103, center: [38.0, -114.0],  zoom: 5.5 },
-  central: { label: "CENTRAL",  lomin: -103, lomax: -87,  center: [38.0, -95.0],   zoom: 5.5 },
-  east:    { label: "EAST",     lomin: -87,  lomax: -66,  center: [38.0, -76.5],   zoom: 5.5 },
+  all: { label: "US-ALL", lomin: -125, lomax: -66, center: [39.5, -98.35], zoom: 5 },
+  west: { label: "WEST", lomin: -125, lomax: -103, center: [38.0, -114.0], zoom: 5.5 },
+  central: { label: "CENTRAL", lomin: -103, lomax: -87, center: [38.0, -95.0], zoom: 5.5 },
+  east: { label: "EAST", lomin: -87, lomax: -66, center: [38.0, -76.5], zoom: 5.5 },
 };
 
 // ─── Initial state ─────────────────────────────────────────────────────────────
