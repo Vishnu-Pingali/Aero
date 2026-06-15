@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -12,6 +13,7 @@ from app.config import Settings
 from app.models.flights import Aircraft, AircraftRoute, FlightsResponse, RoutePoint
 from app.utils.airports import airport_coords
 from app.utils.bbox import normalize_bbox
+from app.utils.json_store import get_aircraft, upsert_aircraft
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +44,17 @@ class AirLabsService:
             lambda: self._fetch_flights(bbox),
         )
 
-    async def get_aircraft_near(self, icao24: str, latitude: float, longitude: float) -> Aircraft:
+    async def get_aircraft_near(
+        self,
+        icao24: str,
+        latitude: float,
+        longitude: float,
+        aircraft_cache_path: Path | None = None,
+    ) -> Aircraft:
         """Locate the aircraft by ICAO24, progressively widening the search area.
+
+        Checks aircraft_cache.json first so that a second user clicking the same
+        plane gets instant data without re-hitting AirLabs.
 
         AirLabs data may be slightly stale, so we try three increasing bboxes:
         1. Small ±1° box around the last-known position (fast, avoids large API calls)
@@ -51,32 +62,75 @@ class AirLabsService:
         3. Full default bbox as final fallback
         """
         normalized_icao = icao24.lower()
+
+        # ── Check JSON aircraft cache first ───────────────────────────────────
+        if aircraft_cache_path is not None:
+            cached = await get_aircraft(aircraft_cache_path, normalized_icao, max_age_seconds=600)
+            if cached is not None:
+                try:
+                    # Remove the housekeeping field before deserialising
+                    cached.pop("cached_at", None)
+                    aircraft = Aircraft(**cached)
+                    logger.debug("Aircraft %s served from JSON cache", icao24.upper())
+                    return aircraft
+                except Exception as exc:
+                    logger.warning("Aircraft cache deserialise failed for %s: %s", icao24, exc)
+
+        # ── Live fetch ────────────────────────────────────────────────────────
         margins = [1.0, 3.0]  # degrees; full default bbox is the final fallback
         for margin in margins:
             bbox = _small_bbox(latitude, longitude, self._settings.default_bbox, margin=margin)
             response = await self._fetch_flights(bbox, respect_interval=False)
             for flight in response.flights:
                 if flight.icao24.lower() == normalized_icao:
+                    if aircraft_cache_path is not None:
+                        try:
+                            await upsert_aircraft(aircraft_cache_path, normalized_icao, flight.model_dump())
+                        except Exception as exc:
+                            logger.warning("Failed to persist aircraft %s to cache: %s", icao24, exc)
                     return flight
+
         # Final fallback: scan the entire default region
         response = await self._fetch_flights(self._settings.default_bbox, respect_interval=False)
         for flight in response.flights:
             if flight.icao24.lower() == normalized_icao:
+                if aircraft_cache_path is not None:
+                    try:
+                        await upsert_aircraft(aircraft_cache_path, normalized_icao, flight.model_dump())
+                    except Exception as exc:
+                        logger.warning("Failed to persist aircraft %s to cache: %s", icao24, exc)
                 return flight
+
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
             f"Aircraft {icao24.upper()} was not found in the current AirLabs feed. "
             "It may have landed or be outside the monitored region.",
         )
 
-    async def get_aircraft_route(self, icao24: str, latitude: float, longitude: float) -> AircraftRoute:
+    async def get_aircraft_route(
+        self,
+        icao24: str,
+        latitude: float,
+        longitude: float,
+        aircraft_cache_path: Path | None = None,
+    ) -> AircraftRoute:
         """Return a route with origin → current → destination waypoints.
 
         A partial route (e.g. only current → destination, or only origin → current)
         is still returned as long as at least two distinct points are available.
         """
-        aircraft = await self.get_aircraft_near(icao24, latitude, longitude)
+        aircraft = await self.get_aircraft_near(
+            icao24, latitude, longitude, aircraft_cache_path=aircraft_cache_path
+        )
         aircraft = await self._hydrate_route_airports(aircraft)
+
+        # Persist the hydrated aircraft (with origin/dest coords) back to cache
+        if aircraft_cache_path is not None:
+            try:
+                await upsert_aircraft(aircraft_cache_path, icao24.lower(), aircraft.model_dump())
+            except Exception as exc:
+                logger.warning("Failed to persist hydrated aircraft %s to cache: %s", icao24, exc)
+
         points = _route_points(aircraft)
         if len(points) < 2:
             # Still return something useful: current position only, so the frontend

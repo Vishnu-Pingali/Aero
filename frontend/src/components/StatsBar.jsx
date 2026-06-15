@@ -3,8 +3,22 @@ import { useStore } from "../store/AppStore";
 import { flightPhase } from "../utils/geo";
 import { filterFlights } from "../utils/filters";
 
+/** Format a fetched_at ISO string into a human-readable age label */
+function formatDataAge(fetchedAt) {
+  if (!fetchedAt) return null;
+  try {
+    const diff = Math.floor((Date.now() - new Date(fetchedAt).getTime()) / 1000);
+    if (diff < 60)  return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
+  } catch {
+    return null;
+  }
+}
+
 export default function StatsBar() {
   const { state } = useStore();
+  const ageLabel = formatDataAge(state.dataAge);
 
   const stats = useMemo(() => {
     const flights = filterFlights(state.flights, {
@@ -72,6 +86,16 @@ export default function StatsBar() {
           {state.sigmets.length}
         </span>
       </div>
+      {/* Data freshness */}
+      {ageLabel && (
+        <>
+          <div className="h-4 w-px bg-on-surface/10" />
+          <div className="flex items-center gap-2 text-[10px] font-mono" title="Time since last backend AirLabs refresh">
+            <span className="text-on-surface-variant">DATA</span>
+            <span className="text-tertiary-fixed">{ageLabel}</span>
+          </div>
+        </>
+      )}
     </div>
   );
 }

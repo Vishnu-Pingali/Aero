@@ -1,16 +1,20 @@
 // ─── API base URL ─────────────────────────────────────────────────────────────
 const LOCAL_HOSTS = new Set(["", "localhost", "127.0.0.1"]);
-// export const API_BASE =
-//   window.AERO_API_BASE ||
-//   (LOCAL_HOSTS.has(window.location.hostname) ? "http://127.0.0.1:8000" : "");
-export const API_BASE = 'https://aero-o7ph.onrender.com'
+export const API_BASE =
+  window.AERO_API_BASE ||
+  (LOCAL_HOSTS.has(window.location.hostname) ? "http://127.0.0.1:8000" : "https://aero-o7ph.onrender.com");
 
-export const POLL_MS = 600_000; // 10 minutes
+// Polling is driven by the backend scheduler — the frontend no longer needs POLL_MS.
+// Kept as a fallback constant in case SSE is unavailable.
+export const POLL_MS = 600_000; // 10 minutes (fallback only)
 export const US_CENTER = [39.5, -98.35];
 export const US_ZOOM = 5;
 export const US_BBOX = { lamin: 24, lomin: -125, lamax: 50, lomax: -66 };
 export const MAX_CLIENT_BBOX_AREA = 1800;
 export const US_METAR_STATIONS = "KJFK,KLAX,KORD,KATL,KDFW,KDEN,KSFO,KMIA";
+
+// SSE endpoint for real-time flight refresh events from the backend scheduler
+export const SSE_URL = `${API_BASE}/api/flights/stream`;
 
 // ─── URL builders ─────────────────────────────────────────────────────────────
 export function flightsUrl(map) {

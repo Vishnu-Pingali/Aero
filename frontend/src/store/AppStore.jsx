@@ -22,6 +22,7 @@ const initialState = {
   flights: [],
   connection: "CONNECTING",    // "CONNECTING" | "SYNCING" | "LIVE" | "DEGRADED"
   lastUpdated: null,
+  dataAge: null,               // ISO timestamp from backend fetched_at (backend-driven)
   selectedIcao: null,
   activeRoute: null,           // { aircraft, points }
   sigmets: [],
@@ -48,6 +49,8 @@ function reducer(state, action) {
   switch (action.type) {
     case "SET_FLIGHTS":
       return { ...state, flights: action.flights, lastUpdated: new Date(), isFetching: false };
+    case "SET_DATA_AGE":
+      return { ...state, dataAge: action.fetchedAt };
     case "SET_CONNECTION":
       return { ...state, connection: action.value };
     case "SET_FETCHING":

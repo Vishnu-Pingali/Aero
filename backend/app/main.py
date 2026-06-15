@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from app.cache.manager import CacheManager
 from app.config import get_settings
 from app.routes import flights, health, weather
 from app.services.airlabs import AirLabsService
+from app.services.scheduler import FlightScheduler, SSEBroadcaster
 from app.services.weather import WeatherService
 from app.utils.logging import configure_logging
 
@@ -18,6 +20,11 @@ from app.utils.logging import configure_logging
 settings = get_settings()
 configure_logging(settings)
 
+# ─── Data directory for JSON persistence ──────────────────────────────────────
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = BACKEND_DIR / "data"
+FLIGHTS_CACHE_PATH = DATA_DIR / "flights_cache.json"
+AIRCRAFT_CACHE_PATH = DATA_DIR / "aircraft_cache.json"
 
 
 @asynccontextmanager
@@ -31,14 +38,36 @@ async def lifespan(app: FastAPI):
     limits = httpx.Limits(max_connections=50, max_keepalive_connections=20)
     client = httpx.AsyncClient(timeout=timeout, limits=limits, headers={"User-Agent": settings.user_agent})
     cache = CacheManager()
+
+    # SSE broadcaster — shared across all request handlers
+    broadcaster = SSEBroadcaster()
+
     app.state.http_client = client
     app.state.cache = cache
     app.state.settings = settings
+    app.state.flights_cache_path = FLIGHTS_CACHE_PATH
+    app.state.aircraft_cache_path = AIRCRAFT_CACHE_PATH
+    app.state.sse_broadcaster = broadcaster
     app.state.airlabs_service = AirLabsService(settings, client, cache)
     app.state.weather_service = WeatherService(settings, client, cache)
+
+    # Start background flight scheduler
+    scheduler = FlightScheduler(
+        airlabs_service=app.state.airlabs_service,
+        cache_path=FLIGHTS_CACHE_PATH,
+        interval_seconds=settings.airlabs_cache_ttl_seconds,  # 600 s
+        broadcaster=broadcaster,
+    )
+    scheduler_task = asyncio.create_task(scheduler.run(), name="flight-scheduler")
+
     try:
         yield
     finally:
+        scheduler_task.cancel()
+        try:
+            await scheduler_task
+        except asyncio.CancelledError:
+            pass
         await client.aclose()
 
 
@@ -79,6 +108,7 @@ async def root() -> dict[str, object]:
             "flights": "/api/flights",
             "region": "/api/flights/region?lamin=33&lomin=-119&lamax=35&lomax=-117",
             "altitude": "/api/flights/altitude?min_alt=10000&max_alt=40000",
+            "stream": "/api/flights/stream",
             "sigmets": "/api/weather/sigmets",
         },
     }

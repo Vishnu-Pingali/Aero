@@ -30,6 +30,7 @@ class Aircraft(BaseModel):
 class FlightsResponse(BaseModel):
     source: str = "airlabs"
     source_time: int | None = None
+    fetched_at: str | None = None   # ISO timestamp of last backend scheduler refresh
     count: int
     bbox: tuple[float, float, float, float]
     flights: list[Aircraft] = Field(default_factory=list)

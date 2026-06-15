@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useStore } from "../store/AppStore";
-import { flightsUrl, API_BASE, POLL_MS, US_METAR_STATIONS } from "../utils/api";
+import { flightsUrl, API_BASE, SSE_URL, POLL_MS, US_METAR_STATIONS } from "../utils/api";
 import { featureIntersectsUsBbox, extractHazards } from "../utils/geo";
 
 // ─── useFlightPolling ─────────────────────────────────────────────────────────
@@ -8,9 +8,11 @@ export function useFlightPolling(map) {
   const { state, dispatch, addToast } = useStore();
   const aborterRef = useRef(null);
   const inFlightRef = useRef(false);
-  const timerRef = useRef(null);
+  const sseRef = useRef(null);
+  const sseReconnectTimer = useRef(null);
   const prevSigmetCount = useRef(0);
 
+  // ─── fetchFlights ───────────────────────────────────────────────────────────
   const fetchFlights = useCallback(
     async (force = false) => {
       if (inFlightRef.current && !force) return;
@@ -30,6 +32,11 @@ export function useFlightPolling(map) {
         const payload = await res.json();
         dispatch({ type: "SET_FLIGHTS", flights: payload.flights || [] });
         dispatch({ type: "SET_CONNECTION", value: "LIVE" });
+
+        // Record the backend's data freshness timestamp if present
+        if (payload.fetched_at) {
+          dispatch({ type: "SET_DATA_AGE", fetchedAt: payload.fetched_at });
+        }
       } catch (err) {
         if (err.name !== "AbortError") {
           dispatch({ type: "SET_CONNECTION", value: "DEGRADED" });
@@ -43,6 +50,45 @@ export function useFlightPolling(map) {
     [dispatch, addToast, map]
   );
 
+  // ─── SSE connection ─────────────────────────────────────────────────────────
+  const connectSSE = useCallback(() => {
+    // Clean up any existing connection
+    if (sseRef.current) {
+      sseRef.current.close();
+      sseRef.current = null;
+    }
+    clearTimeout(sseReconnectTimer.current);
+
+    const es = new EventSource(SSE_URL);
+    sseRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "refresh") {
+          // Backend just refreshed — pull the latest data
+          console.debug(`[SSE] refresh received — ${msg.count} flights, fetched_at=${msg.fetched_at}`);
+          if (msg.fetched_at) {
+            dispatch({ type: "SET_DATA_AGE", fetchedAt: msg.fetched_at });
+          }
+          fetchFlights(true);
+        }
+        // "ping" and "connected" messages are silently ignored
+      } catch (e) {
+        console.warn("[SSE] Failed to parse message:", event.data);
+      }
+    };
+
+    es.onerror = () => {
+      console.warn("[SSE] Connection lost — reconnecting in 5 s…");
+      es.close();
+      sseRef.current = null;
+      // Reconnect after 5 seconds
+      sseReconnectTimer.current = setTimeout(connectSSE, 5_000);
+    };
+  }, [fetchFlights, dispatch]);
+
+  // ─── fetchSigmets ───────────────────────────────────────────────────────────
   const fetchSigmets = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/weather/sigmets`);
@@ -65,6 +111,7 @@ export function useFlightPolling(map) {
     }
   }, [dispatch, addToast]);
 
+  // ─── fetchMetars ────────────────────────────────────────────────────────────
   const fetchMetars = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/api/weather/metars?ids=${US_METAR_STATIONS}`);
@@ -77,28 +124,42 @@ export function useFlightPolling(map) {
     }
   }, [dispatch]);
 
-  // Start polling
+  // ─── Startup ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // Wait for Leaflet map to finish loading
-    if (!map) {
-      return;
-    }
+    if (!map) return;
 
+    // Immediately fetch current data from the backend JSON cache
     fetchFlights(true);
     fetchSigmets();
     fetchMetars();
 
-    timerRef.current = setInterval(() => fetchFlights(false), POLL_MS);
+    // Open the SSE connection — the backend will push "refresh" events every 10 min.
+    // No setInterval for flights; the SSE event triggers fetchFlights() instead.
+    connectSSE();
+
+    // Fallback interval: if SSE stays disconnected for some reason, re-fetch once
+    // per 10-min cycle so the UI never goes stale.
+    const fallbackTimer = setInterval(() => {
+      if (!sseRef.current || sseRef.current.readyState === EventSource.CLOSED) {
+        console.warn("[fallback] SSE not connected — polling manually");
+        fetchFlights(false);
+      }
+    }, POLL_MS);
+
+    // SIGMETs and METARs still poll independently (external weather APIs)
     const sigmetTimer = setInterval(fetchSigmets, 60_000);
     const metarTimer  = setInterval(fetchMetars,  60_000);
 
     return () => {
-      clearInterval(timerRef.current);
+      clearInterval(fallbackTimer);
       clearInterval(sigmetTimer);
       clearInterval(metarTimer);
+      clearTimeout(sseReconnectTimer.current);
+      sseRef.current?.close();
+      sseRef.current = null;
       aborterRef.current?.abort();
     };
-  }, [map, fetchFlights, fetchSigmets, fetchMetars]);
+  }, [map, fetchFlights, fetchSigmets, fetchMetars, connectSSE]);
 
   return { fetchFlights, fetchSigmets, fetchMetars };
 }
