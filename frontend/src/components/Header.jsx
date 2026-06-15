@@ -1,12 +1,10 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store/AppStore";
-import { POLL_MS } from "../utils/api";
 
 export default function Header() {
   const { state, dispatch } = useStore();
   const [utcTime, setUtcTime] = useState("");
-  const [countdown, setCountdown] = useState(POLL_MS / 1000);
-  const [lastPollTime, setLastPollTime] = useState(Date.now());
+
 
   // UTC clock
   useEffect(() => {
@@ -21,22 +19,7 @@ export default function Header() {
     return () => clearInterval(id);
   }, []);
 
-  // Countdown ring — reset when lastUpdated changes
-  useEffect(() => {
-    if (!state.lastUpdated) return;
-    setLastPollTime(Date.now());
-    setCountdown(POLL_MS / 1000);
-  }, [state.lastUpdated]);
 
-  useEffect(() => {
-    const id = setInterval(() => {
-      setCountdown((c) => {
-        const next = c - 1;
-        return next <= 0 ? POLL_MS / 1000 : next;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [lastPollTime]);
 
   const connectionStyles = {
     LIVE:       "text-tertiary-fixed bg-tertiary-fixed/10 border-tertiary-fixed/30",
@@ -45,9 +28,7 @@ export default function Header() {
     CONNECTING: "text-on-surface-variant bg-on-surface/5 border-on-surface/10",
   };
 
-  const pct = ((POLL_MS / 1000 - countdown) / (POLL_MS / 1000)) * 100;
-  const r = 10, circ = 2 * Math.PI * r;
-  const offset = circ - (pct / 100) * circ;
+
 
   return (
     <header className="fixed top-0 left-0 w-full z-[1000] flex justify-between items-center px-gutter h-16 bg-surface/70 backdrop-blur-xl border-b border-on-surface/10">
@@ -73,25 +54,7 @@ export default function Header() {
           {utcTime}
         </span>
 
-        {/* Refresh countdown ring */}
-        <div className="hidden sm:flex items-center gap-2">
-          <svg width="28" height="28" viewBox="0 0 28 28" className="rotate-[-90deg]">
-            <circle cx="14" cy="14" r={r} fill="none" className="stroke-on-surface/10" strokeWidth="2.5" />
-            <circle
-              cx="14" cy="14" r={r}
-              fill="none"
-              stroke="#00dbe7"
-              strokeWidth="2.5"
-              strokeDasharray={circ}
-              strokeDashoffset={offset}
-              strokeLinecap="round"
-              style={{ transition: "stroke-dashoffset 1s linear" }}
-            />
-          </svg>
-          <span className="font-mono text-[10px] text-on-surface-variant tabular-nums">
-            {String(Math.floor(countdown / 60)).padStart(2, "0")}:{String(countdown % 60).padStart(2, "0")}
-          </span>
-        </div>
+
 
         {/* Theme toggle button */}
         <button
