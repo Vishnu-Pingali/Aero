@@ -1,7 +1,6 @@
 # Secrets & personal setup scripts
 credentials.json
 backend/credentials/credentials.json
-setup_claude.ps1
 *.pem
 *.key
 # Local environment
@@ -35,3 +34,4 @@ backend/data/aircraft_cache.json
 Thumbs.db
 .idea/
 .vscode/
+

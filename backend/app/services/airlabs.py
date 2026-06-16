@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,17 @@ from app.cache.manager import CacheManager
 from app.config import Settings
 from app.models.flights import Aircraft, AircraftRoute, FlightsResponse, RoutePoint
 from app.utils.airports import airport_coords
+
+
+@lru_cache(maxsize=512)
+def _airport_coords_cached(iata: str) -> tuple[float, float, str] | None:
+    """Thin LRU-cached wrapper around airport_coords.
+
+    AIRPORT_DB is a module-level constant so caching is always safe.
+    Avoids redundant dict lookups when many flights share the same
+    origin/destination (e.g. dozens of flights from JFK in one batch).
+    """
+    return airport_coords(iata)
 from app.utils.bbox import normalize_bbox
 from app.utils.json_store import get_aircraft, upsert_aircraft
 
@@ -229,11 +241,11 @@ class AirLabsService:
         updates: dict[str, object] = {}
 
         # ── Origin ────────────────────────────────────────────────────────────
+        origin_local = _airport_coords_cached(aircraft.origin_iata.upper()) if aircraft.origin_iata else None
         if aircraft.origin_latitude is None or aircraft.origin_longitude is None:
             # Step 2: local DB
-            local = airport_coords(aircraft.origin_iata)
-            if local:
-                lat, lon, name = local
+            if origin_local:
+                lat, lon, name = origin_local
                 updates["origin_latitude"] = lat
                 updates["origin_longitude"] = lon
                 if not aircraft.origin_name:
@@ -243,18 +255,16 @@ class AirLabsService:
                 api = await self._airport_for(aircraft.origin_iata, aircraft.origin_icao)
                 if api:
                     updates.update(_airport_updates(api, "origin", aircraft))
-        elif not aircraft.origin_name:
-            # Coords already known — just try to get the name
-            local = airport_coords(aircraft.origin_iata)
-            if local:
-                updates["origin_name"] = local[2]
+        elif not aircraft.origin_name and origin_local:
+            # Coords already known — reuse the lookup result we already have
+            updates["origin_name"] = origin_local[2]
 
         # ── Destination ───────────────────────────────────────────────────────
+        dest_local = _airport_coords_cached(aircraft.destination_iata.upper()) if aircraft.destination_iata else None
         if aircraft.destination_latitude is None or aircraft.destination_longitude is None:
             # Step 2: local DB
-            local = airport_coords(aircraft.destination_iata)
-            if local:
-                lat, lon, name = local
+            if dest_local:
+                lat, lon, name = dest_local
                 updates["destination_latitude"] = lat
                 updates["destination_longitude"] = lon
                 if not aircraft.destination_name:
@@ -264,10 +274,9 @@ class AirLabsService:
                 api = await self._airport_for(aircraft.destination_iata, aircraft.destination_icao)
                 if api:
                     updates.update(_airport_updates(api, "destination", aircraft))
-        elif not aircraft.destination_name:
-            local = airport_coords(aircraft.destination_iata)
-            if local:
-                updates["destination_name"] = local[2]
+        elif not aircraft.destination_name and dest_local:
+            # Reuse the lookup result we already have
+            updates["destination_name"] = dest_local[2]
 
         return aircraft.model_copy(update=updates) if updates else aircraft
 
@@ -489,6 +498,14 @@ def _parse_aircraft(row: dict[str, Any]) -> Aircraft | None:
     destination_iata = row.get("arr_iata") or row.get("arrival_iata") or row.get("destination_iata")
     destination_icao = row.get("arr_icao") or row.get("arrival_icao") or row.get("destination_icao")
 
+    # Look up airport coords once per airport — result is reused for both lat and
+    # lon fields, and the lru_cache means repeated IATA codes across the batch
+    # (e.g. many flights from JFK) hit the cache instead of the dict each time.
+    _o_iata = str(origin_iata).upper() if origin_iata else None
+    _d_iata = str(destination_iata).upper() if destination_iata else None
+    _o_coords = _airport_coords_cached(_o_iata) if _o_iata else None
+    _d_coords = _airport_coords_cached(_d_iata) if _d_iata else None
+
     return Aircraft(
         icao24=str(icao24).lower(),
         callsign=str(callsign).strip() if callsign else None,
@@ -503,23 +520,24 @@ def _parse_aircraft(row: dict[str, Any]) -> Aircraft | None:
         vertical_rate_fpm=round(vertical_rate_mps * 196.85) if vertical_rate_mps is not None else None,
         country=row.get("flag") or row.get("country"),
         on_ground=str(row.get("status") or "").lower() in {"landed", "ground", "scheduled"},
-        origin_iata=str(origin_iata).upper() if origin_iata else None,
+        origin_iata=_o_iata,
         origin_icao=str(origin_icao).upper() if origin_icao else None,
         origin_name=row.get("dep_name") or row.get("departure_name") or row.get("origin_name"),
-        origin_latitude=_float_or_none(row.get("dep_lat") or row.get("departure_lat") or row.get("origin_latitude"))
-            or (airport_coords(str(origin_iata).upper() if origin_iata else None) or (None,))[0],
+        origin_latitude=_float_or_none(
+            row.get("dep_lat") or row.get("departure_lat") or row.get("origin_latitude")
+        ) or (_o_coords[0] if _o_coords else None),
         origin_longitude=_float_or_none(
             row.get("dep_lng") or row.get("dep_lon") or row.get("departure_lng") or row.get("origin_longitude")
-        ) or (airport_coords(str(origin_iata).upper() if origin_iata else None) or (None, None))[1],
-        destination_iata=str(destination_iata).upper() if destination_iata else None,
+        ) or (_o_coords[1] if _o_coords else None),
+        destination_iata=_d_iata,
         destination_icao=str(destination_icao).upper() if destination_icao else None,
         destination_name=row.get("arr_name") or row.get("arrival_name") or row.get("destination_name"),
         destination_latitude=_float_or_none(
             row.get("arr_lat") or row.get("arrival_lat") or row.get("destination_latitude")
-        ) or (airport_coords(str(destination_iata).upper() if destination_iata else None) or (None,))[0],
+        ) or (_d_coords[0] if _d_coords else None),
         destination_longitude=_float_or_none(
             row.get("arr_lng") or row.get("arr_lon") or row.get("arrival_lng") or row.get("destination_longitude")
-        ) or (airport_coords(str(destination_iata).upper() if destination_iata else None) or (None, None))[1],
+        ) or (_d_coords[1] if _d_coords else None),
     )
 
 
