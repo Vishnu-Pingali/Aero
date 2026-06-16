@@ -88,7 +88,7 @@ class FlightScheduler:
             await asyncio.sleep(self._interval)
 
     async def _tick(self) -> None:
-        fetched_at = datetime.datetime.utcnow().isoformat() + "Z"
+        fetched_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
         logger.info("FlightScheduler: fetching default-region flights…")
         try:
             response = await self._service.get_default_flights()

@@ -56,6 +56,18 @@ export default function Header() {
 
 
 
+        {/* View mode toggle button */}
+        <button
+          id="view-mode-btn"
+          onClick={() => dispatch({ type: "SET_VIEW_MODE", mode: state.viewMode === "2d" ? "3d" : "2d" })}
+          className="p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-on-surface/5 transition-all flex items-center justify-center border border-on-surface/10"
+          title={state.viewMode === "2d" ? "Switch to 3D Globe" : "Switch to 2D Map"}
+        >
+          <span className="material-symbols-outlined text-lg">
+            {state.viewMode === "2d" ? "public" : "map"}
+          </span>
+        </button>
+
         {/* Theme toggle button */}
         <button
           id="theme-toggle-btn"

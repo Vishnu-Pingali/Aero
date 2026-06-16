@@ -681,7 +681,7 @@ export default function MapView() {
   const lockViewTimerRef = useRef(null);
 
   const focusFlight = useFocusFlight();
-  const [mapReady, setMapReady] = useState(null);
+  const [mapReady, setMapReady] = useState(undefined);
   const { fetchFlights } = useFlightPolling(mapReady);
 
   // ── Init map ────────────────────────────────────────────────────────────────

@@ -241,7 +241,6 @@ AIRPORT_DB: dict[str, tuple[float, float, str]] = {
     "SGN": (10.8188,  106.6520, "Tan Son Nhat International"),
     "HAN": (21.2212,  105.8072, "Noi Bai International"),
     "RGN": (16.9073,   96.1332, "Yangon International"),
-    "BNE": (-27.3842, 153.1175, "Brisbane"),
     "HKT": (8.1132,   98.3169, "Phuket International"),
     "REP": (13.4107,  103.8130, "Siem Reap International"),
     "VTE": (17.9883,  102.5633, "Wattay International"),

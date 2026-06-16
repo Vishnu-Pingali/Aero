@@ -126,7 +126,7 @@ export function useFlightPolling(map) {
 
   // ─── Startup ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!map) return;
+    if (map === undefined) return;
 
     // Immediately fetch current data from the backend JSON cache
     fetchFlights(true);

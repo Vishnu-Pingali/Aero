@@ -20,6 +20,6 @@ async def sigmets(service: Annotated[WeatherService, Depends(get_weather_service
 @router.get("/metars", response_model=MetarResponse)
 async def metars(
     service: Annotated[WeatherService, Depends(get_weather_service)],
-    ids: Annotated[str, Query(description="Comma-separated ICAO station IDs")] = "VIDP,VABB,VOBL,VOMM,VOHS,VECC,VAAH",
+    ids: Annotated[str, Query(description="Comma-separated ICAO station IDs")] = "KJFK,KLAX,KORD,KATL,KDFW,KDEN,KSFO,KMIA",
 ) -> MetarResponse:
     return await service.get_metars(ids.split(","))

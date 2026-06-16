@@ -37,7 +37,7 @@ async def _flights_from_cache(request: Request) -> FlightsResponse | None:
     if fetched_at_str:
         try:
             fetched_at = datetime.datetime.fromisoformat(fetched_at_str.rstrip("Z"))
-            age = (datetime.datetime.utcnow() - fetched_at).total_seconds()
+            age = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - fetched_at).total_seconds()
             if age > CACHE_MAX_AGE_SECONDS:
                 logger.info("flights_cache.json is %.0f s old — bypassing cache", age)
                 return None

@@ -13,6 +13,8 @@ from app.cache.manager import CacheManager
 from app.config import Settings
 from app.models.flights import Aircraft, AircraftRoute, FlightsResponse, RoutePoint
 from app.utils.airports import airport_coords
+from app.utils.bbox import normalize_bbox
+from app.utils.json_store import get_aircraft, upsert_aircraft
 
 
 @lru_cache(maxsize=512)
@@ -24,8 +26,6 @@ def _airport_coords_cached(iata: str) -> tuple[float, float, str] | None:
     origin/destination (e.g. dozens of flights from JFK in one batch).
     """
     return airport_coords(iata)
-from app.utils.bbox import normalize_bbox
-from app.utils.json_store import get_aircraft, upsert_aircraft
 
 logger = logging.getLogger(__name__)
 

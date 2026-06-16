@@ -1,6 +1,7 @@
 import Header from "./components/Header";
 import StatsBar from "./components/StatsBar";
 import MapView from "./components/MapView";
+import GlobeView from "./components/GlobeView";
 import Sidebar from "./components/Sidebar";
 import ToastNotifications from "./components/ToastNotifications";
 import EmergencyModal from "./components/EmergencyModal";
@@ -19,7 +20,7 @@ function AppInner() {
 
       {/* Main content */}
       <main className="fixed inset-0 pt-[100px] flex overflow-hidden">
-        <MapView />
+        {state.viewMode === "3d" ? <GlobeView /> : <MapView />}
         <Sidebar />
       </main>
 

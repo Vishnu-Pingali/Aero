@@ -79,7 +79,7 @@ async def upsert_aircraft(path: Path, icao24: str, aircraft_data: dict[str, Any]
             except (OSError, json.JSONDecodeError):
                 existing = {}
 
-        aircraft_data["cached_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+        aircraft_data["cached_at"] = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None).isoformat() + "Z"
         existing[icao24.lower()] = aircraft_data
 
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -117,7 +117,7 @@ async def get_aircraft(path: Path, icao24: str, max_age_seconds: int = 600) -> d
     if cached_at_str:
         try:
             cached_at = datetime.datetime.fromisoformat(cached_at_str.rstrip("Z"))
-            age = (datetime.datetime.utcnow() - cached_at).total_seconds()
+            age = (datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None) - cached_at).total_seconds()
             if age > max_age_seconds:
                 return None
         except ValueError:
