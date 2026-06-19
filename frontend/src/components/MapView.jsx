@@ -679,9 +679,17 @@ export default function MapView() {
   const routeLayerRef   = useRef(null);
   const radarLayerRef   = useRef(null);
   const lockViewTimerRef = useRef(null);
+  const canvasRef       = useRef(null);
+  const wwdRef          = useRef(null);
+  const wwdAircraftLayerRef = useRef(null);
+  const wwdRouteLayerRef = useRef(null);
+  const wwdSigmetLayerRef = useRef(null);
 
   const focusFlight = useFocusFlight();
   const [mapReady, setMapReady] = useState(undefined);
+  const [radarOpacity, setRadarOpacity] = useState(0.45);
+  const [showLegend, setShowLegend] = useState(false);
+  const [consoleExpanded, setConsoleExpanded] = useState(false);
   const { fetchFlights } = useFlightPolling(mapReady);
 
   // ── Init map ────────────────────────────────────────────────────────────────
@@ -700,6 +708,263 @@ export default function MapView() {
     return () => map.remove();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Helper: Convert Hex string to Web WorldWind Color ────────────────────────
+  const hexToWwdColor = (hex, opacity = 1.0) => {
+    let clean = hex.replace("#", "");
+    if (clean.length === 3) {
+      clean = clean.split("").map((c) => c + c).join("");
+    }
+    const r = parseInt(clean.substring(0, 2), 16) / 255;
+    const g = parseInt(clean.substring(2, 4), 16) / 255;
+    const b = parseInt(clean.substring(4, 6), 16) / 255;
+    return new window.WorldWind.Color(r, g, b, opacity);
+  };
+
+  // ── Init NASA Web WorldWind 3D Globe ──────────────────────────────────────────
+  useEffect(() => {
+    if (!canvasRef.current || !window.WorldWind) return;
+
+    // Initialize the WorldWindow on canvas
+    const wwd = new window.WorldWind.WorldWindow("worldwind-canvas");
+
+    // Add high-resolution ESRI satellite tiled imagery
+    const esriLayer = new window.WorldWind.TiledImageLayer(
+      new window.WorldWind.Sector(-90, 90, -180, 180),
+      new window.WorldWind.Location(45, 45),
+      19,
+      "image/jpeg",
+      "EsriSatellite",
+      256,
+      256
+    );
+    esriLayer.urlBuilder = {
+      urlForTile: (tile) => {
+        return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${tile.level + 1}/${tile.row}/${tile.column}`;
+      }
+    };
+    wwd.addLayer(esriLayer);
+
+    // Add standard WorldWind controls
+    wwd.addLayer(new window.WorldWind.CompassLayer());
+    wwd.addLayer(new window.WorldWind.CoordinatesDisplayLayer(wwd));
+    wwd.addLayer(new window.WorldWind.ViewControlsLayer(wwd));
+
+    // Custom data layers
+    const aircraftLayer = new window.WorldWind.RenderableLayer("Aircraft");
+    const routeLayer    = new window.WorldWind.RenderableLayer("Route Paths");
+    const sigmetLayer   = new window.WorldWind.RenderableLayer("SIGMET Alerts");
+
+    wwd.addLayer(aircraftLayer);
+    wwd.addLayer(routeLayer);
+    wwd.addLayer(sigmetLayer);
+
+    wwdRef.current = wwd;
+    wwdAircraftLayerRef.current = aircraftLayer;
+    wwdRouteLayerRef.current = routeLayer;
+    wwdSigmetLayerRef.current = sigmetLayer;
+
+    // Set initial position to active region
+    const reg = REGIONS[state.region] || { center: [20.5937, 78.9629] };
+    wwd.navigator.lookAtNavigator.lookAtPosition = new window.WorldWind.Position(reg.center[0], reg.center[1], 0);
+    wwd.navigator.lookAtNavigator.range = 4.5e6;
+    wwd.redraw();
+
+    // Mouse picking / selection click listener
+    const handlePick = (e) => {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const pickList = wwd.pick(wwd.canvasCoordinates(x, y));
+      if (pickList.objects.length > 0) {
+        for (let p = 0; p < pickList.objects.length; p++) {
+          const userObj = pickList.objects[p].userObject;
+          if (userObj instanceof window.WorldWind.Placemark && userObj.flight) {
+            focusFlight(userObj.flight.icao24, { lat: userObj.flight.latitude, lng: userObj.flight.longitude });
+            break;
+          }
+        }
+      }
+    };
+    canvasRef.current.addEventListener("click", handlePick);
+
+    return () => {
+      if (canvasRef.current) {
+        canvasRef.current.removeEventListener("click", handlePick);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── WorldWind Region Panning ───────────────────────────────────────────────
+  useEffect(() => {
+    const wwd = wwdRef.current;
+    if (!wwd) return;
+    const reg = REGIONS[state.region];
+    if (reg) {
+      wwd.navigator.lookAtNavigator.lookAtPosition = new window.WorldWind.Position(reg.center[0], reg.center[1], 0);
+      wwd.navigator.lookAtNavigator.range = reg.zoom > 5 ? 2.8e6 : 4.5e6;
+      wwd.redraw();
+    }
+  }, [state.region]);
+
+  // ── Update WorldWind Globe Data ─────────────────────────────────────────────
+  useEffect(() => {
+    const wwd = wwdRef.current;
+    if (!wwd) return;
+
+    wwdAircraftLayerRef.current.removeAllRenderables();
+    wwdRouteLayerRef.current.removeAllRenderables();
+    wwdSigmetLayerRef.current.removeAllRenderables();
+
+    const visible = filterFlights(state.flights, {
+      altBand: state.altBand,
+      searchQuery: state.searchQuery,
+      phaseFilter: state.phaseFilter,
+      region: state.region,
+      selectedIcao: state.selectedIcao,
+    });
+
+    // Render Flights as Placemarks
+    for (const f of visible) {
+      const position = new window.WorldWind.Position(f.latitude, f.longitude, (f.altitude_ft || 0) * 0.3048);
+      const placemark = new window.WorldWind.Placemark(position, true, null);
+      placemark.label = f.callsign || f.icao24.toUpperCase();
+      placemark.flight = f; // Attach for pick selection
+
+      const isSelected = state.selectedIcao === f.icao24;
+      const phase = flightPhase(f);
+      const { color } = PHASE_COLORS[phase];
+
+      const attrs = new window.WorldWind.PlacemarkAttributes(null);
+      attrs.imageScale = isSelected ? 0.75 : 0.55;
+      attrs.labelAttributes.color = hexToWwdColor(color);
+      attrs.labelAttributes.font.size = 11;
+      attrs.labelAttributes.font.family = "monospace";
+      attrs.labelAttributes.offset = new window.WorldWind.Offset(
+        window.WorldWind.OFFSET_FRACTION, 0.5,
+        window.WorldWind.OFFSET_FRACTION, -1.2
+      );
+
+      // Create a canvas icon representation for the airplane pointer
+      const canvas = document.createElement("canvas");
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext("2d");
+      ctx.translate(16, 16);
+      
+      const bearing = flightBearing(f);
+      ctx.rotate((bearing * Math.PI) / 180);
+
+      // Draw custom aircraft arrow
+      ctx.beginPath();
+      ctx.moveTo(0, -9);
+      ctx.lineTo(7, 7);
+      ctx.lineTo(0, 3);
+      ctx.lineTo(-7, 7);
+      ctx.closePath();
+
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = isSelected ? "#ffffff" : "#061422";
+      ctx.stroke();
+
+      if (isSelected) {
+        ctx.beginPath();
+        ctx.arc(0, 0, 11, 0, 2 * Math.PI);
+        ctx.lineWidth = 1.0;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+      }
+
+      attrs.imageSource = canvas;
+      placemark.attributes = attrs;
+      wwdAircraftLayerRef.current.addRenderable(placemark);
+    }
+
+    // Render Active Route as Paths
+    if (state.activeRoute) {
+      const { points: routePoints } = state.activeRoute;
+      const origin = routePoints.find((p) => p.type === "origin");
+      const dest = routePoints.find((p) => p.type === "destination");
+      const current = routePoints.find((p) => p.type === "current");
+
+      if (origin && current) {
+        const pathCoords = [
+          new window.WorldWind.Position(origin.latitude, origin.longitude, 100),
+          new window.WorldWind.Position(current.latitude, current.longitude, (current.altitude_ft || 0) * 0.3048)
+        ];
+        const path = new window.WorldWind.Path(pathPositions => pathCoords, null);
+        path.positions = pathCoords;
+        const pathAttrs = new window.WorldWind.ShapeAttributes(null);
+        pathAttrs.outlineColor = hexToWwdColor("#b9cacb", 0.5);
+        pathAttrs.outlineWidth = 2.0;
+        path.attributes = pathAttrs;
+        wwdRouteLayerRef.current.addRenderable(path);
+      }
+
+      if (current && dest) {
+        const pathCoords = [
+          new window.WorldWind.Position(current.latitude, current.longitude, (current.altitude_ft || 0) * 0.3048),
+          new window.WorldWind.Position(dest.latitude, dest.longitude, 100)
+        ];
+        const path = new window.WorldWind.Path(pathPositions => pathCoords, null);
+        path.positions = pathCoords;
+        const pathAttrs = new window.WorldWind.ShapeAttributes(null);
+        pathAttrs.outlineColor = hexToWwdColor("#00f2ff", 0.85);
+        pathAttrs.outlineWidth = 3.0;
+        path.attributes = pathAttrs;
+        wwdRouteLayerRef.current.addRenderable(path);
+      }
+
+      if (current) {
+        wwd.navigator.lookAtNavigator.lookAtPosition = new window.WorldWind.Position(current.latitude, current.longitude, 0);
+        wwd.navigator.lookAtNavigator.range = 1.2e6;
+      }
+    }
+
+    // Render SIGMET Polygons
+    if (state.sigmetsVisible && state.sigmets.length) {
+      for (const feat of state.sigmets) {
+        const geometry = feat.geometry;
+        if (geometry && geometry.type === "Polygon") {
+          const coords = geometry.coordinates[0];
+          const locations = coords.map((c) => new window.WorldWind.Location(c[1], c[0]));
+          
+          const polygon = new window.WorldWind.Polygon(locations, null);
+          polygon.altitudeMode = window.WorldWind.CLAMP_TO_GROUND;
+
+          const severity = normalizeSigmetSeverity(feat.properties);
+          const severityColors = { extreme: "#ff4f5e", severe: "#ff8a80", moderate: "#ffca7a", advisory: "#b8c3ff" };
+          const color = severityColors[severity] || "#b8c3ff";
+
+          const shapeAttrs = new window.WorldWind.ShapeAttributes(null);
+          shapeAttrs.drawInterior = true;
+          shapeAttrs.drawOutline = true;
+          shapeAttrs.outlineColor = hexToWwdColor(color, 0.8);
+          shapeAttrs.interiorColor = hexToWwdColor(color, 0.2);
+          shapeAttrs.outlineWidth = 2.0;
+
+          polygon.attributes = shapeAttrs;
+          wwdSigmetLayerRef.current.addRenderable(polygon);
+        }
+      }
+    }
+
+    wwd.redraw();
+  }, [
+    state.flights,
+    state.selectedIcao,
+    state.activeRoute,
+    state.altBand,
+    state.searchQuery,
+    state.phaseFilter,
+    state.region,
+    state.sigmets,
+    state.sigmetsVisible
+  ]);
+
 
   // ── Tile layer switcher ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -865,17 +1130,25 @@ export default function MapView() {
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
-    if (radarLayerRef.current) { radarLayerRef.current.remove(); radarLayerRef.current = null; }
 
     if (state.radarVisible) {
-      radarLayerRef.current = L.tileLayer("https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        opacity: 0.45,
-        transparent: true,
-        attribution: "IEM Nexrad"
-      }).addTo(map);
+      if (!radarLayerRef.current) {
+        radarLayerRef.current = L.tileLayer("https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          opacity: radarOpacity,
+          transparent: true,
+          attribution: "IEM Nexrad"
+        }).addTo(map);
+      } else {
+        radarLayerRef.current.setOpacity(radarOpacity);
+      }
+    } else {
+      if (radarLayerRef.current) {
+        radarLayerRef.current.remove();
+        radarLayerRef.current = null;
+      }
     }
-  }, [state.radarVisible]);
+  }, [state.radarVisible, radarOpacity]);
 
   // ── Route layer ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1073,96 +1346,287 @@ export default function MapView() {
   return (
     <div className="relative flex-1 h-full overflow-hidden bg-background">
       {/* Leaflet container */}
-      <div ref={mapRef} className="absolute inset-0 z-0" />
+      <div
+        ref={mapRef}
+        className={`absolute inset-0 transition-opacity duration-500 ${
+          state.viewMode === "2d" ? "opacity-100 z-10 pointer-events-auto" : "opacity-0 pointer-events-none z-0"
+        }`}
+      />
+
+      {/* WorldWind 3D Globe Canvas */}
+      <canvas
+        ref={canvasRef}
+        id="worldwind-canvas"
+        className={`absolute inset-0 w-full h-full outline-none transition-opacity duration-500 ${
+          state.viewMode === "3d" ? "opacity-100 z-10 pointer-events-auto" : "opacity-0 pointer-events-none z-0"
+        }`}
+      />
 
       {/* Vignette overlay */}
       <div className="absolute inset-0 pointer-events-none z-[420] bg-[radial-gradient(circle_at_center,transparent_0%,rgba(6,20,34,0.45)_100%)]" />
 
-      {/* Bottom-left controls */}
-      <div className="absolute left-6 bottom-6 z-[800] flex flex-col gap-3">
-        <div className="glass-panel p-2 rounded-xl flex flex-col gap-1">
-          {/* Layer switcher */}
-          {[state.theme === "dark" ? "dark" : "light", "satellite", "terrain"].map((layer) => (
+      {/* Tactical Control Console */}
+      {!consoleExpanded ? (
+        <button
+          onClick={() => setConsoleExpanded(true)}
+          className="absolute left-6 bottom-6 z-[800] w-12 h-12 rounded-xl glass-panel flex items-center justify-center text-on-surface-variant hover:text-primary hover:border-primary/40 transition-all shadow-lg active:scale-95"
+          title="Open Tactical Console"
+        >
+          <span className="material-symbols-outlined text-2xl">settings_input_component</span>
+          {state.sigmets.length > 0 && (
+            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-error border border-background shadow-[0_0_6px_rgba(255,79,94,0.6)] animate-pulse" />
+          )}
+        </button>
+      ) : (
+        <div className="absolute left-6 bottom-6 z-[800] flex flex-col gap-3.5 w-[280px] glass-panel p-4 rounded-xl shadow-2xl border border-on-surface/10 animate-fade-in">
+          <div className="flex justify-between items-center pb-2 border-b border-on-surface/10">
+            <div className="flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-primary text-sm animate-pulse">settings_input_component</span>
+              <span className="font-display font-semibold text-[10px] text-primary tracking-widest">TACTICAL CONSOLE</span>
+            </div>
+            {/* Collapse button */}
             <button
-              key={layer}
-              title={`${layer.charAt(0).toUpperCase() + layer.slice(1)} map`}
-              onClick={() => dispatch({ type: "SET_TILE_LAYER", layer })}
-              className={`p-2 rounded-lg text-xs font-mono transition-all ${
-                state.tileLayer === layer
-                  ? "bg-primary/20 text-primary border border-primary/40"
-                  : "text-on-surface-variant hover:text-primary hover:bg-on-surface/5"
-              }`}
+              onClick={() => setConsoleExpanded(false)}
+              className="text-on-surface-variant hover:text-primary p-0.5 rounded transition-colors flex items-center justify-center hover:bg-on-surface/5"
+              title="Collapse console"
             >
-              {{ dark: "🌑", light: "☀️", satellite: "🛰", terrain: "🏔" }[layer]}
+              <span className="material-symbols-outlined text-sm leading-none">close</span>
             </button>
-          ))}
-          <div className="h-px bg-on-surface/10 my-1" />
-          {/* SIGMET toggle */}
-          <button
-            id="toggle-sigmets"
-            onClick={() => dispatch({ type: "TOGGLE_SIGMETS" })}
-            className={`p-3 rounded-lg border transition-all ${
-              state.sigmetsVisible
-                ? "bg-primary/20 text-primary border-primary/30"
-                : "text-on-surface-variant hover:text-primary hover:bg-on-surface/5 border-transparent"
-            }`}
-            title="Toggle SIGMET layer"
-          >
-            <span className="material-symbols-outlined text-2xl">thunderstorm</span>
-          </button>
-          {/* Weather Radar toggle */}
-          <button
-            id="toggle-radar"
-            onClick={() => dispatch({ type: "TOGGLE_RADAR" })}
-            className={`p-3 rounded-lg border transition-all ${
-              state.radarVisible
-                ? "bg-primary/20 text-primary border-primary/30"
-                : "text-on-surface-variant hover:text-primary hover:bg-on-surface/5 border-transparent"
-            }`}
-            title="Toggle Weather Radar (Nexrad)"
-          >
-            <span className="material-symbols-outlined text-2xl">grain</span>
-          </button>
-          {/* Callsign labels toggle */}
-          <button
-            onClick={() => dispatch({ type: "TOGGLE_LABELS" })}
-            className={`p-3 rounded-lg border transition-all ${
-              state.showLabels
-                ? "bg-secondary/20 text-secondary border-secondary/30"
-                : "text-on-surface-variant hover:text-primary hover:bg-on-surface/5 border-transparent"
-            }`}
-            title="Toggle callsign labels"
-          >
-            <span className="material-symbols-outlined text-2xl">label</span>
-          </button>
-          {/* Refresh */}
-          <button
-            id="refresh-now"
-            onClick={() => fetchFlights(true)}
-            className="p-3 rounded-lg text-on-surface-variant hover:text-primary hover:bg-on-surface/5 transition-all"
-            title="Refresh aircraft"
-          >
-            <span className={`material-symbols-outlined text-2xl ${state.isFetching ? "radar-spinning" : ""}`}>radar</span>
-          </button>
-          {/* Reset view */}
-          <button
-            id="locate-us"
-            onClick={() => mapInstanceRef.current?.setView(US_CENTER, US_ZOOM)}
-            className="p-3 rounded-lg text-on-surface-variant hover:text-primary hover:bg-on-surface/5 transition-all"
-            title="US overview"
-          >
-            <span className="material-symbols-outlined text-2xl">navigation</span>
-          </button>
-        </div>
+          </div>
 
-        {/* SIGMET status pill */}
-        <div className="glass-panel px-4 py-2 rounded-full flex items-center gap-2">
-          <div className={`w-2.5 h-2.5 rounded-full ${state.sigmets.length ? "bg-tertiary-fixed shadow-[0_0_8px_rgba(98,255,150,0.5)]" : "bg-on-surface-variant"}`} />
-          <span className="font-mono text-xs text-primary">
-            SIGMET: {state.sigmets.length}
-          </span>
+          {/* Section: View Mode */}
+          <div className="flex flex-col gap-1.5">
+            <div className="font-mono text-[9px] text-on-surface-variant tracking-wider uppercase">VIEW MODE</div>
+            <div className="grid grid-cols-2 gap-1">
+              {[
+                { id: "2d", label: "2D MAP", icon: "map" },
+                { id: "3d", label: "3D GLOBE", icon: "public" }
+              ].map((mode) => {
+                const isSelected = state.viewMode === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    onClick={() => dispatch({ type: "SET_VIEW_MODE", mode: mode.id })}
+                    className={`py-1.5 rounded text-[9px] font-mono border transition-all flex items-center justify-center gap-1 ${
+                      isSelected
+                        ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_8px_rgba(0,242,255,0.1)]"
+                        : "text-on-surface-variant border-transparent hover:bg-on-surface/5"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[10px] leading-none">{mode.icon}</span>
+                    <span>{mode.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section: Base Layers */}
+          <div className="flex flex-col gap-1.5">
+            <div className="font-mono text-[9px] text-on-surface-variant tracking-wider uppercase">BASE CHART</div>
+            <div className="grid grid-cols-4 gap-1">
+              {[
+                { id: "dark", label: "DARK" },
+                { id: "light", label: "LIGHT" },
+                { id: "satellite", label: "SAT" },
+                { id: "terrain", label: "TERR" }
+              ].map((layer) => {
+                const isSelected = state.tileLayer === layer.id;
+                return (
+                  <button
+                    key={layer.id}
+                    onClick={() => {
+                      dispatch({ type: "SET_TILE_LAYER", layer: layer.id });
+                      if (layer.id === "dark" && state.theme !== "dark") dispatch({ type: "TOGGLE_THEME" });
+                      if (layer.id === "light" && state.theme !== "light") dispatch({ type: "TOGGLE_THEME" });
+                    }}
+                    className={`py-1.5 rounded text-[9px] font-mono border transition-all ${
+                      isSelected
+                        ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_8px_rgba(0,242,255,0.1)]"
+                        : "text-on-surface-variant border-transparent hover:bg-on-surface/5"
+                    }`}
+                  >
+                    {layer.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section: Cockpit Toggles */}
+          <div className="flex flex-col gap-2.5 py-1.5 border-y border-on-surface/5">
+            {/* Radar Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-on-surface-variant">grain</span>
+                <span className="font-mono text-[10px] text-on-surface-variant">NEXRAD RADAR</span>
+              </div>
+              <label className="cockpit-switch">
+                <input
+                  id="toggle-radar"
+                  type="checkbox"
+                  className="cockpit-switch-input"
+                  checked={state.radarVisible}
+                  onChange={() => dispatch({ type: "TOGGLE_RADAR" })}
+                />
+                <div className="cockpit-switch-track">
+                  <div className="cockpit-switch-lever"></div>
+                </div>
+                <div className="cockpit-switch-indicator"></div>
+              </label>
+            </div>
+
+            {/* Radar Opacity Slider (visible only when radar is enabled) */}
+            {state.radarVisible && (
+              <div className="flex flex-col gap-1 pl-5 animate-fade-in">
+                <div className="flex justify-between text-[8px] font-mono text-on-surface-variant">
+                  <span>RADAR OPACITY</span>
+                  <span>{Math.round(radarOpacity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.05"
+                  value={radarOpacity}
+                  onChange={(e) => setRadarOpacity(parseFloat(e.target.value))}
+                  className="w-full h-1 bg-surface-container rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+              </div>
+            )}
+
+            {/* SIGMET Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-on-surface-variant">thunderstorm</span>
+                <span className="font-mono text-[10px] text-on-surface-variant">SIGMET ADVISORIES</span>
+              </div>
+              <label className="cockpit-switch">
+                <input
+                  id="toggle-sigmets"
+                  type="checkbox"
+                  className="cockpit-switch-input"
+                  checked={state.sigmetsVisible}
+                  onChange={() => dispatch({ type: "TOGGLE_SIGMETS" })}
+                />
+                <div className="cockpit-switch-track">
+                  <div className="cockpit-switch-lever"></div>
+                </div>
+                <div className="cockpit-switch-indicator"></div>
+              </label>
+            </div>
+
+            {/* Callsign Label Toggle */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-sm text-on-surface-variant">label</span>
+                <span className="font-mono text-[10px] text-on-surface-variant">CALLSIGN LABELS</span>
+              </div>
+              <label className="cockpit-switch">
+                <input
+                  type="checkbox"
+                  className="cockpit-switch-input"
+                  checked={state.showLabels}
+                  onChange={() => dispatch({ type: "TOGGLE_LABELS" })}
+                />
+                <div className="cockpit-switch-track">
+                  <div className="cockpit-switch-lever"></div>
+                </div>
+                <div className="cockpit-switch-indicator"></div>
+              </label>
+            </div>
+          </div>
+
+          {/* Section: Weather Legend (Collapsible) */}
+          <div className="flex flex-col gap-1.5">
+            <button 
+              onClick={() => setShowLegend(!showLegend)}
+              className="flex items-center justify-between font-mono text-[9px] text-on-surface-variant tracking-wider uppercase hover:text-primary transition-colors"
+            >
+              <span>WEATHER LEGEND</span>
+              <span className="material-symbols-outlined text-xs leading-none">
+                {showLegend ? "expand_less" : "expand_more"}
+              </span>
+            </button>
+            
+            {showLegend && (
+              <div className="flex flex-col gap-2 pt-1 border-t border-on-surface/5 animate-fade-in">
+                {/* METAR / Flight Category */}
+                <div>
+                  <div className="text-[8px] font-mono text-on-surface-variant mb-1 font-semibold">FLIGHT CATEGORIES (METAR)</div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[
+                      { id: "VFR", label: "VFR", bg: "bg-tertiary-fixed/10 border-tertiary-fixed/30 text-tertiary-fixed" },
+                      { id: "MVFR", label: "MVFR", bg: "bg-secondary/10 border-secondary/30 text-secondary" },
+                      { id: "IFR", label: "IFR", bg: "bg-error/10 border-error/30 text-error" },
+                      { id: "LIFR", label: "LIFR", bg: "bg-red-500/10 border-red-500/30 text-red-400" }
+                    ].map((cat) => (
+                      <div 
+                        key={cat.id} 
+                        className={`text-center py-0.5 rounded text-[8px] font-mono border font-semibold ${cat.bg}`}
+                        title={cat.id}
+                      >
+                        {cat.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* SIGMET Severity */}
+                <div>
+                  <div className="text-[8px] font-mono text-on-surface-variant mb-1 font-semibold">SIGMET SEVERITY</div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[
+                      { id: "adv", label: "ADVSY", bg: "bg-[#b8c3ff]/10 border-[#b8c3ff]/30 text-[#b8c3ff]" },
+                      { id: "mod", label: "MOD", bg: "bg-[#ffca7a]/10 border-[#ffca7a]/30 text-[#ffca7a]" },
+                      { id: "sev", label: "SEV", bg: "bg-[#ff8a80]/10 border-[#ff8a80]/30 text-[#ff8a80]" },
+                      { id: "ext", label: "EXTR", bg: "bg-[#ff4f5e]/10 border-[#ff4f5e]/30 text-[#ff4f5e]" }
+                    ].map((sev) => (
+                      <div 
+                        key={sev.id} 
+                        className={`text-center py-0.5 rounded text-[8px] font-mono border font-semibold ${sev.bg}`}
+                        title={sev.label}
+                      >
+                        {sev.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section: Action Buttons */}
+          <div className="flex gap-2 pt-2 border-t border-on-surface/10">
+            <button
+              id="refresh-now"
+              onClick={() => fetchFlights(true)}
+              className="flex-1 py-1.5 rounded-lg border border-on-surface/10 hover:border-primary/40 hover:bg-primary/5 transition-all flex items-center justify-center gap-1 text-[10px] font-mono text-on-surface-variant hover:text-primary"
+              title="Refresh aircraft"
+            >
+              <span className={`material-symbols-outlined text-[14px] ${state.isFetching ? "radar-spinning" : ""}`}>radar</span>
+              <span>SCAN</span>
+            </button>
+            <button
+              id="locate-us"
+              onClick={() => {
+                if (state.viewMode === "3d" && wwdRef.current) {
+                  wwdRef.current.navigator.lookAtNavigator.lookAtPosition = new window.WorldWind.Position(US_CENTER[0], US_CENTER[1], 0);
+                  wwdRef.current.navigator.lookAtNavigator.range = 4.5e6;
+                  wwdRef.current.redraw();
+                } else {
+                  mapInstanceRef.current?.setView(US_CENTER, US_ZOOM);
+                }
+              }}
+              className="flex-1 py-1.5 rounded-lg border border-on-surface/10 hover:border-primary/40 hover:bg-primary/5 transition-all flex items-center justify-center gap-1 text-[10px] font-mono text-on-surface-variant hover:text-primary"
+              title="US overview"
+            >
+              <span className="material-symbols-outlined text-[14px]">navigation</span>
+              <span>CENTER</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

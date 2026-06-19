@@ -57,17 +57,23 @@ export default function Header() {
 
 
 
-        {/* Theme toggle button */}
-        <button
-          id="theme-toggle-btn"
-          onClick={() => dispatch({ type: "TOGGLE_THEME" })}
-          className="p-2 rounded-full text-on-surface-variant hover:text-primary hover:bg-on-surface/5 transition-all flex items-center justify-center border border-on-surface/10"
-          title={state.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-        >
-          <span className="material-symbols-outlined text-lg">
-            {state.theme === "dark" ? "light_mode" : "dark_mode"}
-          </span>
-        </button>
+        {/* Theme toggle cockpit switch */}
+        <div className="flex items-center gap-2 border border-on-surface/10 px-3 py-1 rounded-xl bg-surface-container-low/50">
+          <span className="font-mono text-[9px] text-on-surface-variant tracking-wider">HUD THEME</span>
+          <label className="cockpit-switch" title={state.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}>
+            <input
+              id="theme-toggle-btn"
+              type="checkbox"
+              className="cockpit-switch-input"
+              checked={state.theme === "light"}
+              onChange={() => dispatch({ type: "TOGGLE_THEME" })}
+            />
+            <div className="cockpit-switch-track">
+              <div className="cockpit-switch-lever"></div>
+            </div>
+            <div className="cockpit-switch-indicator"></div>
+          </label>
+        </div>
 
         {/* Emergency button */}
         <button
