@@ -728,22 +728,9 @@ export default function MapView() {
     // Initialize the WorldWindow on canvas
     const wwd = new window.WorldWind.WorldWindow("worldwind-canvas");
 
-    // Add high-resolution ESRI satellite tiled imagery
-    const esriLayer = new window.WorldWind.TiledImageLayer(
-      new window.WorldWind.Sector(-90, 90, -180, 180),
-      new window.WorldWind.Location(45, 45),
-      19,
-      "image/jpeg",
-      "EsriSatellite",
-      256,
-      256
-    );
-    esriLayer.urlBuilder = {
-      urlForTile: (tile) => {
-        return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${tile.level + 1}/${tile.row}/${tile.column}`;
-      }
-    };
-    wwd.addLayer(esriLayer);
+    // Add base imagery layers (Blue Marble low-res + Landsat high-res)
+    wwd.addLayer(new window.WorldWind.BMNGOneImageLayer());
+    wwd.addLayer(new window.WorldWind.BMNGLandsatLayer());
 
     // Add standard WorldWind controls
     wwd.addLayer(new window.WorldWind.CompassLayer());
@@ -765,9 +752,11 @@ export default function MapView() {
     wwdSigmetLayerRef.current = sigmetLayer;
 
     // Set initial position to active region
-    const reg = REGIONS[state.region] || { center: [20.5937, 78.9629] };
-    wwd.navigator.lookAtNavigator.lookAtPosition = new window.WorldWind.Position(reg.center[0], reg.center[1], 0);
-    wwd.navigator.lookAtNavigator.range = 4.5e6;
+    // In WorldWind 0.9.0, wwd.navigator IS the LookAtNavigator directly
+    const reg = REGIONS[state.region] || { center: [39.5, -98.35] };
+    wwd.navigator.lookAtLocation.latitude  = reg.center[0];
+    wwd.navigator.lookAtLocation.longitude = reg.center[1];
+    wwd.navigator.range = 4.5e6;
     wwd.redraw();
 
     // Mouse picking / selection click listener
@@ -802,8 +791,9 @@ export default function MapView() {
     if (!wwd) return;
     const reg = REGIONS[state.region];
     if (reg) {
-      wwd.navigator.lookAtNavigator.lookAtPosition = new window.WorldWind.Position(reg.center[0], reg.center[1], 0);
-      wwd.navigator.lookAtNavigator.range = reg.zoom > 5 ? 2.8e6 : 4.5e6;
+      wwd.navigator.lookAtLocation.latitude  = reg.center[0];
+      wwd.navigator.lookAtLocation.longitude = reg.center[1];
+      wwd.navigator.range = reg.zoom > 5 ? 2.8e6 : 4.5e6;
       wwd.redraw();
     }
   }, [state.region]);
@@ -919,8 +909,9 @@ export default function MapView() {
       }
 
       if (current) {
-        wwd.navigator.lookAtNavigator.lookAtPosition = new window.WorldWind.Position(current.latitude, current.longitude, 0);
-        wwd.navigator.lookAtNavigator.range = 1.2e6;
+        wwd.navigator.lookAtLocation.latitude  = current.latitude;
+        wwd.navigator.lookAtLocation.longitude = current.longitude;
+        wwd.navigator.range = 1.2e6;
       }
     }
 
@@ -1611,8 +1602,9 @@ export default function MapView() {
               id="locate-us"
               onClick={() => {
                 if (state.viewMode === "3d" && wwdRef.current) {
-                  wwdRef.current.navigator.lookAtNavigator.lookAtPosition = new window.WorldWind.Position(US_CENTER[0], US_CENTER[1], 0);
-                  wwdRef.current.navigator.lookAtNavigator.range = 4.5e6;
+                  wwdRef.current.navigator.lookAtLocation.latitude  = US_CENTER[0];
+                  wwdRef.current.navigator.lookAtLocation.longitude = US_CENTER[1];
+                  wwdRef.current.navigator.range = 4.5e6;
                   wwdRef.current.redraw();
                 } else {
                   mapInstanceRef.current?.setView(US_CENTER, US_ZOOM);
