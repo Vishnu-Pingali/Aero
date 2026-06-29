@@ -3,32 +3,36 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import { useStore } from "../store/AppStore";
 import { useFlightPolling, useFocusFlight } from "../hooks/useFlights";
 import { flightBearing, flightPhase, PHASE_COLORS, geodesicSegment,
-         normalizeSigmetSeverity, extractHazards } from "../utils/geo";
+         normalizeSigmetSeverity, extractHazards, crossTrackDistance, gcDistance } from "../utils/geo";
 import { filterFlights } from "../utils/filters";
 import { US_CENTER, US_ZOOM, POLL_MS, API_BASE } from "../utils/api";
-import { REGIONS } from "../store/AppStore";
+import { REGIONS, AIRLINE_FILTERS } from "../store/AppStore";
+import { getSvgForFlight } from "../utils/aircraftRegistry";
 
 // ─── Tile layer configs ────────────────────────────────────────────────────────
 const TILE_LAYERS = {
   dark: {
     url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    opts: { maxZoom: 19, subdomains: "abcd" },
+    opts: { maxZoom: 19, subdomains: "abcd", noWrap: true },
   },
   light: {
     url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    opts: { maxZoom: 19, subdomains: "abcd" },
+    opts: { maxZoom: 19, subdomains: "abcd", noWrap: true },
   },
   satellite: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    opts: { maxZoom: 19 },
+    opts: { maxZoom: 19, noWrap: true },
   },
   terrain: {
     url: "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
-    opts: { maxZoom: 17, subdomains: "abc" },
+    opts: { maxZoom: 17, subdomains: "abc", noWrap: true },
   },
 };
 
 // ─── Marker HTML factory ───────────────────────────────────────────────────────
+// SVGs and category mapping are managed in ../utils/aircraftRegistry.js
+// Add new aircraft types there without modifying this file.
+
 function markerHtml(flight, showLabel, isSelected) {
   const bearing = flightBearing(flight);
   const phase = flightPhase(flight);
@@ -37,40 +41,99 @@ function markerHtml(flight, showLabel, isSelected) {
     ? `<div class="aircraft-marker-label" style="--marker-color:${color}">${flight.callsign || flight.icao24.toUpperCase()}</div>`
     : "";
 
-  const scale = isSelected ? "scale(1.25)" : "scale(1)";
-  const border = isSelected ? `border: 2px solid var(--selected-aircraft); box-shadow: 0 0 12px ${color}` : "";
+  const scale = isSelected ? "scale(1.35)" : "scale(1)";
+  const border = isSelected ? `border: 2px solid var(--selected-aircraft); border-radius: 50%; box-shadow: 0 0 14px ${color}, 0 0 6px ${color}` : "";
   const markerColor = isSelected ? "var(--selected-aircraft)" : color;
 
+  // getSvgForFlight handles all category detection and fallback internally
+  const svgHtml = getSvgForFlight(flight);
+
   return `
-    <div style="position:relative;width:34px;height:34px;transform:${scale};transition:transform 0.2s;z-index:${isSelected ? 1000 : 1}">
-      <div class="aircraft-marker" style="--marker-color:${markerColor};--marker-glow:${glow};${border}">
-        <span class="material-symbols-outlined" style="transform: rotate(${bearing}deg); transition: none;">flight</span>
+    <div style="position:relative;width:40px;height:40px;transform:${scale};transition:transform 0.2s;z-index:${isSelected ? 1000 : 1}">
+      <div class="aircraft-marker" style="--marker-color:${markerColor};--marker-glow:${glow};--heading:${bearing}deg;${border}">
+        ${svgHtml}
       </div>
       ${label}
     </div>`;
 }
 
-function popupHtml(flight) {
+function popupHtml(flight, activeRoute = null, selectedIcao = null) {
   const phase = flightPhase(flight);
   const { color } = PHASE_COLORS[phase];
   const phaseLabel = { climb: "▲ CLIMBING", descend: "▼ DESCENDING", cruise: "→ CRUISING", ground: "⬛ ON GROUND" }[phase];
+
+  let routeHtml = "";
+  if (selectedIcao === flight.icao24) {
+    if (activeRoute && activeRoute.aircraft?.icao24 === flight.icao24) {
+      const { aircraft, points } = activeRoute;
+      const originPt = points.find(p => p.type === "origin");
+      const destPt = points.find(p => p.type === "destination");
+      
+      let deviationText = "Normal (<10 km)";
+      let deviationColor = "var(--color-phase-climb)";
+      
+      if (originPt && destPt) {
+        const dev = crossTrackDistance(
+          flight.latitude,
+          flight.longitude,
+          originPt.latitude,
+          originPt.longitude,
+          destPt.latitude,
+          destPt.longitude
+        );
+        if (dev >= 50) {
+          deviationText = `Major Deviation (${Math.round(dev)} km)`;
+          deviationColor = "var(--color-error)";
+        } else if (dev >= 10) {
+          deviationText = `Minor Deviation (${Math.round(dev)} km)`;
+          deviationColor = "var(--color-secondary)";
+        }
+      }
+
+      const distRemaining = destPt
+        ? `${Math.round(gcDistance(flight.latitude, flight.longitude, destPt.latitude, destPt.longitude)).toLocaleString()} km`
+        : "--";
+
+      const flightNum = aircraft.flight_number ? `${aircraft.airline_iata || ""}${aircraft.flight_number}` : (aircraft.callsign || "--");
+      const originLabel = originPt ? `${originPt.label} (${aircraft.origin_name || "Origin"})` : "--";
+      const destLabel = destPt ? `${destPt.label} (${aircraft.destination_name || "Destination"})` : "--";
+
+      routeHtml = `
+        <div style="border-top:1px solid var(--glass-border);padding-top:8px;margin-top:8px;display:grid;grid-template-columns:100px 1fr;gap:4px 12px">
+          <span style="color:var(--color-on-surface-variant)">FLIGHT NUM</span><span style="color:var(--color-primary);font-weight:bold">${flightNum}</span>
+          <span style="color:var(--color-on-surface-variant)">ORIGIN</span><span style="color:var(--color-primary);text-overflow:ellipsis;overflow:hidden;white-space:nowrap" title="${originLabel}">${originLabel}</span>
+          <span style="color:var(--color-on-surface-variant)">DESTINATION</span><span style="color:var(--color-primary);text-overflow:ellipsis;overflow:hidden;white-space:nowrap" title="${destLabel}">${destLabel}</span>
+          <span style="color:var(--color-on-surface-variant)">DIST REMAIN</span><span style="color:var(--color-primary);font-weight:bold">${distRemaining}</span>
+          <span style="color:var(--color-on-surface-variant)">DEV STATUS</span><span style="color:${deviationColor};font-weight:bold">${deviationText}</span>
+        </div>
+      `;
+    } else {
+      routeHtml = `
+        <div style="border-top:1px solid var(--glass-border);padding-top:8px;margin-top:8px;color:var(--color-primary-container);display:flex;align-items:center;gap:6px">
+          <span class="material-symbols-outlined text-sm radar-spinning">sync</span>
+          <span style="font-size:9px">Loading route data...</span>
+        </div>
+      `;
+    }
+  }
+
   return `
-    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--color-on-surface)">
+    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--color-on-surface);min-width:240px">
       <div style="font-family:Geist,sans-serif;font-size:16px;color:var(--color-primary);margin-bottom:4px">
         ${flight.callsign || flight.icao24.toUpperCase()}
       </div>
       <div style="color:var(--color-on-surface-variant);font-size:10px;margin-bottom:8px">
-        ${flight.icao24.toUpperCase()} | ${flight.country || "Unknown"}
+        ${flight.icao24.toUpperCase()} | ${flight.aircraft_type || "Unknown Type"} | ${flight.country || "Unknown"}
       </div>
       <div style="display:inline-block;padding:2px 8px;border-radius:99px;background:${color}22;color:${color};font-size:9px;margin-bottom:10px;border:1px solid ${color}55">
         ${phaseLabel}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px">
-        <span style="color:var(--color-on-surface-variant)">ALT</span><span style="color:var(--color-primary);text-align:right">${flight.altitude_ft != null ? Math.round(flight.altitude_ft).toLocaleString() : "--"} FT</span>
-        <span style="color:var(--color-on-surface-variant)">SPD</span><span style="color:var(--color-primary);text-align:right">${flight.velocity_kts != null ? Math.round(flight.velocity_kts) : "--"} KT</span>
-        <span style="color:var(--color-on-surface-variant)">HDG</span><span style="color:var(--color-primary);text-align:right">${flight.heading != null ? Math.round(flight.heading) : "--"}°</span>
-        <span style="color:var(--color-on-surface-variant)">VS</span><span style="color:var(--color-primary);text-align:right">${flight.vertical_rate_fpm != null ? (flight.vertical_rate_fpm > 0 ? "+" : "") + Math.round(flight.vertical_rate_fpm).toLocaleString() : "--"} FPM</span>
+      <div style="display:grid;grid-template-columns:100px 1fr;gap:4px 12px">
+        <span style="color:var(--color-on-surface-variant)">ALTITUDE</span><span style="color:var(--color-primary);font-weight:bold">${flight.altitude_ft != null ? Math.round(flight.altitude_ft).toLocaleString() : "--"} FT</span>
+        <span style="color:var(--color-on-surface-variant)">GROUND SPEED</span><span style="color:var(--color-primary);font-weight:bold">${flight.velocity_kts != null ? Math.round(flight.velocity_kts) : "--"} KT</span>
+        <span style="color:var(--color-on-surface-variant)">HEADING</span><span style="color:var(--color-primary);font-weight:bold">${flight.heading != null ? Math.round(flight.heading) : "--"}°</span>
       </div>
+      ${routeHtml}
     </div>`;
 }
 
@@ -668,6 +731,59 @@ function translateSigmetToEnglish(rawText) {
   return txt.trim();
 }
 
+const inlineWorkerCode = `
+  const toRad = (d) => d * Math.PI / 180;
+  const toDeg = (r) => r * 180 / Math.PI;
+
+  function geodesicSegment(lat1, lon1, lat2, lon2, steps = 80) {
+    const φ1 = toRad(lat1), λ1 = toRad(lon1);
+    const φ2 = toRad(lat2), λ2 = toRad(lon2);
+    const Δφ = φ2 - φ1, Δλ = λ2 - λ1;
+    const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    const d = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    if (d < 0.001) return [[lat1, lon1], [lat2, lon2]];
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const f = i / steps;
+      const A = Math.sin((1 - f) * d) / Math.sin(d);
+      const B = Math.sin(f * d) / Math.sin(d);
+      const x = A * Math.cos(φ1) * Math.cos(λ1) + B * Math.cos(φ2) * Math.cos(λ2);
+      const y = A * Math.cos(φ1) * Math.sin(λ1) + B * Math.cos(φ2) * Math.sin(λ2);
+      const z = A * Math.sin(φ1) + B * Math.sin(φ2);
+      pts.push([toDeg(Math.atan2(z, Math.sqrt(x * x + y * y))), toDeg(Math.atan2(y, x))]);
+    }
+    return pts;
+  }
+
+  self.onmessage = function(e) {
+    const { points } = e.data;
+    if (!points) {
+      self.postMessage({ plannedCoords: [], remArc: [] });
+      return;
+    }
+
+    const originPt = points.find((p) => p.type === "origin");
+    const currentPt = points.find((p) => p.type === "current");
+    const destPt = points.find((p) => p.type === "destination");
+    const waypointPts = points.filter((p) => p.type === "waypoint");
+
+    let plannedCoords = [];
+    if (originPt && currentPt) {
+      const seq = [originPt, ...waypointPts, currentPt].filter(Boolean);
+      for (let i = 0; i < seq.length - 1; i++) {
+        plannedCoords.push(...geodesicSegment(seq[i].latitude, seq[i].longitude, seq[i + 1].latitude, seq[i + 1].longitude, 100));
+      }
+    }
+
+    let remArc = [];
+    if (currentPt && destPt) {
+      remArc = geodesicSegment(currentPt.latitude, currentPt.longitude, destPt.latitude, destPt.longitude, 100);
+    }
+
+    self.postMessage({ plannedCoords, remArc });
+  };
+`;
+
 // ─── MapView Component ────────────────────────────────────────────────────────
 export default function MapView() {
   const { state, dispatch } = useStore();
@@ -675,9 +791,10 @@ export default function MapView() {
   const mapInstanceRef  = useRef(null);
   const tileLayerRef    = useRef(null);
   const markersRef      = useRef(new Map());
-  const sigmetLayerRef  = useRef(null);
-  const routeLayerRef   = useRef(null);
-  const radarLayerRef   = useRef(null);
+  const sigmetLayerRef           = useRef(null);
+  const routeLayerRef            = useRef(null);
+  const radarLayerRef            = useRef(null);
+  const scheduledRouteLayerRef   = useRef(null);
   const lockViewTimerRef = useRef(null);
   const canvasRef       = useRef(null);
   const wwdRef          = useRef(null);
@@ -690,19 +807,66 @@ export default function MapView() {
   const [radarOpacity, setRadarOpacity] = useState(0.45);
   const [showLegend, setShowLegend] = useState(false);
   const [consoleExpanded, setConsoleExpanded] = useState(false);
+  const [mapBounds, setMapBounds] = useState(null);
+  const [currentZoom, setCurrentZoom] = useState(3);
   const { fetchFlights } = useFlightPolling(mapReady);
+
+  // Web Worker for asynchronous geodesic calculations
+  const [routeCoords, setRouteCoords] = useState({ plannedCoords: [], remArc: [] });
+  const geoWorkerRef = useRef(null);
+
+  useEffect(() => {
+    const blob = new Blob([inlineWorkerCode], { type: "application/javascript" });
+    const worker = new Worker(URL.createObjectURL(blob));
+    
+    worker.onmessage = (e) => {
+      setRouteCoords(e.data);
+    };
+
+    geoWorkerRef.current = worker;
+
+    return () => {
+      worker.terminate();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.activeRoute && geoWorkerRef.current) {
+      geoWorkerRef.current.postMessage({ points: state.activeRoute.points });
+    } else {
+      setRouteCoords({ plannedCoords: [], remArc: [] });
+    }
+  }, [state.activeRoute]);
 
   // ── Init map ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const map = L.map(mapRef.current, { zoomControl: false, preferCanvas: true })
-      .setView(US_CENTER, US_ZOOM);
+    const WORLD_BOUNDS = L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180));
+    const map = L.map(mapRef.current, {
+      zoomControl: false,
+      preferCanvas: true,
+      worldCopyJump: false,
+      maxBounds: WORLD_BOUNDS,
+      maxBoundsViscosity: 1.0,
+      minZoom: 2,
+    }).setView([20, 0], 3);
     L.control.zoom({ position: "topright" }).addTo(map);
     const cfg = TILE_LAYERS.dark;
     tileLayerRef.current = L.tileLayer(cfg.url, cfg.opts).addTo(map);
     mapInstanceRef.current = map;
     setMapReady(map);
+    setMapBounds(map.getBounds());
 
-    map.on("moveend", () => dispatch({ type: "SET_FETCHING", value: false }));
+    const initialZoom = map.getZoom();
+    setCurrentZoom(initialZoom);
+
+    map.on("moveend", () => {
+      dispatch({ type: "SET_FETCHING", value: false });
+      setMapBounds(map.getBounds());
+      setCurrentZoom(map.getZoom());
+    });
+    map.on("zoomend", () => {
+      setCurrentZoom(map.getZoom());
+    });
     map.on("click", () => dispatch({ type: "CLEAR_ROUTE" }));
 
     return () => map.remove();
@@ -785,18 +949,8 @@ export default function MapView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── WorldWind Region Panning ───────────────────────────────────────────────
-  useEffect(() => {
-    const wwd = wwdRef.current;
-    if (!wwd) return;
-    const reg = REGIONS[state.region];
-    if (reg) {
-      wwd.navigator.lookAtLocation.latitude  = reg.center[0];
-      wwd.navigator.lookAtLocation.longitude = reg.center[1];
-      wwd.navigator.range = reg.zoom > 5 ? 2.8e6 : 4.5e6;
-      wwd.redraw();
-    }
-  }, [state.region]);
+  // Region panning removed — map now shows worldwide flights
+
 
   // ── Update WorldWind Globe Data ─────────────────────────────────────────────
   useEffect(() => {
@@ -811,7 +965,7 @@ export default function MapView() {
       altBand: state.altBand,
       searchQuery: state.searchQuery,
       phaseFilter: state.phaseFilter,
-      region: state.region,
+      selectedAirlines: state.selectedAirlines,
       selectedIcao: state.selectedIcao,
     });
 
@@ -879,12 +1033,16 @@ export default function MapView() {
       const origin = routePoints.find((p) => p.type === "origin");
       const dest = routePoints.find((p) => p.type === "destination");
       const current = routePoints.find((p) => p.type === "current");
+      const waypointPts = routePoints.filter((p) => p.type === "waypoint");
 
       if (origin && current) {
-        const pathCoords = [
-          new window.WorldWind.Position(origin.latitude, origin.longitude, 100),
-          new window.WorldWind.Position(current.latitude, current.longitude, (current.altitude_ft || 0) * 0.3048)
-        ];
+        // Planned/Flown Route: connect origin -> waypoints -> current
+        const plannedSeq = [origin, ...waypointPts, current].filter(Boolean);
+        const pathCoords = plannedSeq.map((p) => {
+          const alt = p.type === "current" ? (current.altitude_ft || 0) * 0.3048 : 100;
+          return new window.WorldWind.Position(p.latitude, p.longitude, alt);
+        });
+
         const path = new window.WorldWind.Path(pathPositions => pathCoords, null);
         path.positions = pathCoords;
         const pathAttrs = new window.WorldWind.ShapeAttributes(null);
@@ -895,6 +1053,7 @@ export default function MapView() {
       }
 
       if (current && dest) {
+        // Remaining Route: connect current -> destination directly
         const pathCoords = [
           new window.WorldWind.Position(current.latitude, current.longitude, (current.altitude_ft || 0) * 0.3048),
           new window.WorldWind.Position(dest.latitude, dest.longitude, 100)
@@ -927,15 +1086,24 @@ export default function MapView() {
           polygon.altitudeMode = window.WorldWind.CLAMP_TO_GROUND;
 
           const severity = normalizeSigmetSeverity(feat.properties);
-          const severityColors = { extreme: "#ff4f5e", severe: "#ff8a80", moderate: "#ffca7a", advisory: "#b8c3ff" };
-          const color = severityColors[severity] || "#b8c3ff";
+          const severityColors = {
+            extreme: "#ff3b30",  // Professional crimson warning
+            severe: "#ff9500",   // Alert orange
+            moderate: "#ffcc00", // Soft yellow
+            advisory: "#5ac8fa", // Muted aviation blue for advisories
+          };
+          const color = severityColors[severity] || severityColors.advisory;
+
+          const outlineOpacity = { extreme: 0.7, severe: 0.5, moderate: 0.4, advisory: 0.25 }[severity] || 0.3;
+          const fillOpacity = { extreme: 0.18, severe: 0.12, moderate: 0.08, advisory: 0.03 }[severity] || 0.05;
+          const outlineWidth = { extreme: 2.0, severe: 1.5, moderate: 1.2, advisory: 1.0 }[severity] || 1.0;
 
           const shapeAttrs = new window.WorldWind.ShapeAttributes(null);
           shapeAttrs.drawInterior = true;
           shapeAttrs.drawOutline = true;
-          shapeAttrs.outlineColor = hexToWwdColor(color, 0.8);
-          shapeAttrs.interiorColor = hexToWwdColor(color, 0.2);
-          shapeAttrs.outlineWidth = 2.0;
+          shapeAttrs.outlineColor = hexToWwdColor(color, outlineOpacity);
+          shapeAttrs.interiorColor = hexToWwdColor(color, fillOpacity);
+          shapeAttrs.outlineWidth = outlineWidth;
 
           polygon.attributes = shapeAttrs;
           wwdSigmetLayerRef.current.addRenderable(polygon);
@@ -951,7 +1119,7 @@ export default function MapView() {
     state.altBand,
     state.searchQuery,
     state.phaseFilter,
-    state.region,
+    state.selectedAirlines,
     state.sigmets,
     state.sigmetsVisible
   ]);
@@ -966,15 +1134,29 @@ export default function MapView() {
     tileLayerRef.current = L.tileLayer(cfg.url, cfg.opts).addTo(map);
   }, [state.tileLayer]);
 
-  // ── Region panning ──────────────────────────────────────────────────────────
+  // ── Auto-zoom to Selected Airline Region ────────────────────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current;
-    if (!map) return;
-    const reg = REGIONS[state.region];
-    if (reg) {
-      map.setView(reg.center, reg.zoom, { animate: true, duration: 1.5 });
+    if (!map || !state.flights || state.flights.length === 0) return;
+
+    // Filter flights belonging ONLY to the selected airlines
+    const visible = filterFlights(state.flights, {
+      altBand: state.altBand,
+      searchQuery: state.searchQuery,
+      phaseFilter: state.phaseFilter,
+      selectedAirlines: state.selectedAirlines,
+      selectedIcao: state.selectedIcao,
+    });
+
+    if (visible.length > 0 && state.selectedAirlines.length < AIRLINE_FILTERS.length) {
+      const coords = visible.map(f => L.latLng(f.latitude, f.longitude));
+      const bounds = L.latLngBounds(coords);
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 6 });
     }
-  }, [state.region]);
+  }, [state.selectedAirlines]);
+
+  // Region panning removed — worldwide mode, user pans manually
+
 
   // ── Marker animation helper ─────────────────────────────────────────────────
   const animateMarker = useCallback((marker, nextLatLng, durationMs = Math.min(POLL_MS * 0.9, 90_000)) => {
@@ -992,18 +1174,32 @@ export default function MapView() {
   }, []);
 
   // ── Update markers ──────────────────────────────────────────────────────────
+  // Minimum zoom level at which aircraft markers are visible.
+  // Below this zoom the map is too zoomed-out for individual planes to be useful.
+  const MARKER_MIN_ZOOM = 4;
+
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
     const { showLabels, selectedIcao } = state;
 
-    // Apply shared filters (altBand, search, phase, region, selectedIcao)
+    // Hide all markers when zoomed out beyond the threshold
+    if (currentZoom < MARKER_MIN_ZOOM) {
+      for (const [icao, marker] of markersRef.current.entries()) {
+        cancelAnimationFrame(marker._aeroAnim);
+        marker.remove();
+        markersRef.current.delete(icao);
+      }
+      return;
+    }
+
+    // Apply shared filters (altBand, search, phase, selectedAirlines, selectedIcao)
     const visible = filterFlights(state.flights, {
       altBand: state.altBand,
       searchQuery: state.searchQuery,
       phaseFilter: state.phaseFilter,
-      region: state.region,
+      selectedAirlines: state.selectedAirlines,
       selectedIcao: selectedIcao,
     });
 
@@ -1012,16 +1208,16 @@ export default function MapView() {
     for (const flight of visible) {
       const latlng = [flight.latitude, flight.longitude];
       const isSelected = selectedIcao === flight.icao24;
-      const icon = L.divIcon({ html: markerHtml(flight, showLabels, isSelected), className: "", iconSize: [34, 34], iconAnchor: [17, 17] });
+      const icon = L.divIcon({ html: markerHtml(flight, showLabels, isSelected), className: "", iconSize: [40, 40], iconAnchor: [20, 20] });
       
       // Update/Create marker
       const existing = markersRef.current.get(flight.icao24);
       if (existing) {
         animateMarker(existing, latlng);
         existing.setIcon(icon);
-        existing.setPopupContent(popupHtml(flight));
+        existing.setPopupContent(popupHtml(flight, state.activeRoute, selectedIcao));
       } else {
-        const marker = L.marker(latlng, { icon }).bindPopup(popupHtml(flight));
+        const marker = L.marker(latlng, { icon }).bindPopup(popupHtml(flight, state.activeRoute, selectedIcao));
         marker.on("click", () => {
           const ll = marker.getLatLng();
           focusFlight(flight.icao24, ll);
@@ -1040,7 +1236,7 @@ export default function MapView() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.flights, state.showLabels, state.altBand, state.searchQuery, state.phaseFilter, state.selectedIcao, state.region]);
+  }, [state.flights, state.showLabels, state.altBand, state.searchQuery, state.phaseFilter, state.selectedAirlines, state.selectedIcao, state.activeRoute, currentZoom]);
 
 
 
@@ -1055,15 +1251,26 @@ export default function MapView() {
     sigmetLayerRef.current = L.geoJSON(geojson, {
       style: (feature) => {
         const severity = normalizeSigmetSeverity(feature.properties);
-        const colors = { extreme: "#ff4f5e", severe: "#ff8a80", moderate: "#ffca7a", advisory: "#b8c3ff" };
+        const colors = {
+          extreme: "#ff3b30",  // Professional crimson warning
+          severe: "#ff9500",   // Alert orange
+          moderate: "#ffcc00", // Soft yellow
+          advisory: "#5ac8fa", // Muted aviation blue for advisories
+        };
         const color = colors[severity] || colors.advisory;
+        
+        const weight = { extreme: 2.0, severe: 1.5, moderate: 1.2, advisory: 1.0 }[severity] || 1.0;
+        const opacity = { extreme: 0.7, severe: 0.5, moderate: 0.4, advisory: 0.25 }[severity] || 0.3;
+        const fillOpacity = { extreme: 0.18, severe: 0.12, moderate: 0.08, advisory: 0.03 }[severity] || 0.05;
+
         return {
           className: `sigmet-${severity}`,
-          color, fillColor: color,
-          weight: severity === "extreme" ? 4 : 3,
-          opacity: 0.95,
-          fillOpacity: severity === "advisory" ? 0.16 : 0.3,
-          dashArray: severity === "advisory" ? "6 6" : null,
+          color,
+          fillColor: color,
+          weight,
+          opacity,
+          fillOpacity,
+          dashArray: severity === "advisory" ? "4 6" : null,
         };
       },
       onEachFeature: (feature, layer) => {
@@ -1141,6 +1348,82 @@ export default function MapView() {
     }
   }, [state.radarVisible, radarOpacity]);
 
+  // ── Scheduled Route overlay ──────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (scheduledRouteLayerRef.current) {
+      scheduledRouteLayerRef.current.remove();
+      scheduledRouteLayerRef.current = null;
+    }
+    const sr = state.selectedScheduledRoute;
+    if (!sr) return;
+
+    const lg = L.layerGroup().addTo(map);
+    scheduledRouteLayerRef.current = lg;
+
+    const dep = sr.dep_coords;
+    const arr = sr.arr_coords;
+    if (!dep || !arr) return;
+
+    // Build geodesic arc from dep to arr
+    const arcPts = geodesicSegment(dep.lat, dep.lon, arr.lat, arr.lon, 120);
+
+    // Glow underline
+    L.polyline(arcPts, {
+      color: "#ff9f00", weight: 8, opacity: 0.10, interactive: false,
+    }).addTo(lg);
+
+    // Dashed amber route line
+    L.polyline(arcPts, {
+      color: "#ff9f00", weight: 2, opacity: 0.85,
+      dashArray: "10 8", className: "scheduled-route-line", interactive: false,
+    }).addTo(lg);
+
+    // Airport badge helper
+    function airportBadge(coord, code, name, emoji) {
+      const icon = L.divIcon({
+        className: "",
+        iconSize: [60, 42],
+        iconAnchor: [30, 38],
+        html: `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">
+          <div style="font-size:16px;filter:drop-shadow(0 0 5px #ff9f00)">${emoji}</div>
+          <div style="font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:700;
+                      color:#ff9f00;white-space:nowrap;letter-spacing:0.05em;
+                      text-shadow:0 0 8px #061422;background:rgba(6,20,34,0.85);
+                      padding:1px 5px;border-radius:3px;border:1px solid rgba(255,159,0,0.4)">${code}</div>
+        </div>`,
+      });
+      return L.marker([coord.lat, coord.lon], { icon })
+        .bindTooltip(`<b style="color:#ff9f00">${code}</b><br><span style="font-size:10px">${name || code}</span>`, { sticky: false, direction: "top" });
+    }
+
+    airportBadge(dep, sr.dep_iata, dep.name, "🛫").addTo(lg);
+    airportBadge(arr, sr.arr_iata, arr.name, "🛬").addTo(lg);
+
+    // Mid-path label
+    const mid = arcPts[Math.floor(arcPts.length / 2)];
+    if (mid) {
+      const flight = sr.route;
+      const flightLabel = flight.flight_iata || flight.flight_icao || "–";
+      const midIcon = L.divIcon({
+        className: "",
+        iconSize: [130, 22],
+        iconAnchor: [65, 11],
+        html: `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;
+                            color:#ff9f00;background:rgba(6,20,34,0.85);padding:2px 10px;
+                            border-radius:99px;border:1px solid rgba(255,159,0,0.35);
+                            text-align:center;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.4)">
+          ${sr.dep_iata} → ${sr.arr_iata} · ${flightLabel}
+        </div>`,
+      });
+      L.marker(mid, { icon: midIcon, interactive: false }).addTo(lg);
+    }
+
+    // Fit the arc
+    map.fitBounds(L.latLngBounds(arcPts), { padding: [90, 110], maxZoom: 6 });
+  }, [state.selectedScheduledRoute]);
+
   // ── Route layer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -1151,30 +1434,69 @@ export default function MapView() {
     const lg = L.layerGroup().addTo(map);
     routeLayerRef.current = lg;
 
+    const svgRenderer = L.svg();
+
     const { points } = state.activeRoute;
     const originPt  = points.find((p) => p.type === "origin");
     const currentPt = points.find((p) => p.type === "current");
     const destPt    = points.find((p) => p.type === "destination");
 
-    function arc(a, b) {
-      return geodesicSegment(a.latitude, a.longitude, b.latitude, b.longitude, 100);
+    const air = state.activeRoute?.aircraft;
+    const { plannedCoords, remArc } = routeCoords;
+
+    // Planned/Flown Route: Dashed Gray Line + Hover Tooltip + Midpoint Label
+    if (originPt && currentPt && plannedCoords && plannedCoords.length > 0) {
+      const plannedPolyline = L.polyline(plannedCoords, {
+        renderer: svgRenderer,
+        color: "#9ca3af", // Gray dashed line representing flown track
+        weight: 2.5,
+        opacity: 0.75,
+        dashArray: "6 6",
+        className: "route-line-planned"
+      }).addTo(lg);
+
+      // Bind hover details tooltip
+      const airlineStr = air?.airline_iata || "Unknown Airline";
+      const flightStr = air?.flight_number ? `${air.airline_iata || ""}${air.flight_number}` : (air?.callsign || "Unknown Flight");
+      const durationStr = air?.duration_min ? `${Math.floor(air.duration_min / 60)}h ${air.duration_min % 60}m` : "Unknown";
+      const tooltipHtml = `
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px">
+          <div style="color:#00f2ff;font-weight:bold;margin-bottom:4px">${flightStr} (${airlineStr})</div>
+          <div style="color:var(--color-on-surface)">ROUTE: ${originPt.label} → ${destPt?.label || 'Destination'}</div>
+          <div style="color:var(--color-on-surface-variant)">DEP: ${air?.origin_name || originPt.label}</div>
+          <div style="color:var(--color-on-surface-variant)">ARR: ${air?.destination_name || destPt?.label || 'N/A'}</div>
+          <div style="color:var(--color-on-surface-variant);margin-top:2px">EST DURATION: ${durationStr}</div>
+        </div>
+      `;
+      plannedPolyline.bindTooltip(tooltipHtml, { sticky: true });
+
+      // Route midpoint label
+      const midCoord = plannedCoords[Math.floor(plannedCoords.length / 2)];
+      if (midCoord && destPt) {
+        const midIcon = L.divIcon({
+          className: "",
+          iconSize: [80, 24],
+          iconAnchor: [40, 12],
+          html: `
+            <div class="glass-panel" style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:bold;
+                        color:#ffca7a;border:1px solid rgba(255,202,122,0.3);
+                        background:rgba(6,20,34,0.85);padding:2px 8px;border-radius:99px;
+                        text-align:center;box-shadow:0 2px 6px rgba(0,0,0,0.3);white-space:nowrap;">
+              ${originPt.label} → ${destPt.label}
+            </div>
+          `
+        });
+        L.marker(midCoord, { icon: midIcon, interactive: false }).addTo(lg);
+      }
     }
 
-    // Flown segment
-    if (originPt && currentPt) {
-      const flownArc = arc(originPt, currentPt);
-      L.polyline(flownArc, { color: "#b9cacb", weight: 6, opacity: 0.10 }).addTo(lg);
-      L.polyline(flownArc, { color: "#b9cacb", weight: 1.5, opacity: 0.45, dashArray: "6 10" }).addTo(lg);
+    // Remaining segment (drawn in all modes to show direction to destination)
+    if (currentPt && destPt && remArc && remArc.length > 0) {
+      L.polyline(remArc, { renderer: svgRenderer, color: "#00f2ff", weight: 7, opacity: 0.15 }).addTo(lg);
+      L.polyline(remArc, { renderer: svgRenderer, color: "#00f2ff", weight: 2.5, opacity: 0.95, dashArray: "14 8", className: "route-line-animated flow-trail" }).addTo(lg);
     }
 
-    // Remaining segment
-    if (currentPt && destPt) {
-      const remArc = arc(currentPt, destPt);
-      L.polyline(remArc, { color: "#00f2ff", weight: 10, opacity: 0.10 }).addTo(lg);
-      L.polyline(remArc, { color: "#00f2ff", weight: 2.5, opacity: 0.95, dashArray: "14 8", className: "route-line-animated" }).addTo(lg);
-    }
-
-    // Airport pins
+    // Airport pins (rendered as custom badges, matching original styling structure)
     function airportMarker(pt, emoji) {
       const icon = L.divIcon({
         className: "",
@@ -1311,9 +1633,13 @@ export default function MapView() {
 
     // Fit bounds
     const allCoords = points.map((p) => [p.latitude, p.longitude]);
-    map.fitBounds(L.latLngBounds(allCoords), { padding: [90, 110], maxZoom: 7 });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.activeRoute]);
+    if (allCoords.length > 0) {
+      map.fitBounds(L.latLngBounds(allCoords), { padding: [90, 110], maxZoom: 7 });
+    }
+  }, [state.activeRoute, routeCoords]);
+
+  // Trails removed — no trail rendering
+
 
   // ── Lock View — keep map centered on selected aircraft ──────────────────────
   useEffect(() => {
@@ -1332,6 +1658,28 @@ export default function MapView() {
     }, 3000);
     return () => clearInterval(lockViewTimerRef.current);
   }, [state.lockView, state.selectedIcao, state.flights]);
+
+  // Calculate current deviation for active flight
+  let currentDeviation = 0;
+  let deviationActive = false;
+  if (state.selectedIcao && state.activeRoute) {
+    const flight = state.flights.find((f) => f.icao24 === state.selectedIcao);
+    if (flight) {
+      const originPt = state.activeRoute.points.find((p) => p.type === "origin");
+      const destPt = state.activeRoute.points.find((p) => p.type === "destination");
+      if (originPt && destPt) {
+        currentDeviation = crossTrackDistance(
+          flight.latitude,
+          flight.longitude,
+          originPt.latitude,
+          originPt.longitude,
+          destPt.latitude,
+          destPt.longitude
+        );
+        deviationActive = currentDeviation >= 10;
+      }
+    }
+  }
 
   // ── Map Controls ────────────────────────────────────────────────────────────
   return (
@@ -1355,6 +1703,43 @@ export default function MapView() {
 
       {/* Vignette overlay */}
       <div className="absolute inset-0 pointer-events-none z-[420] bg-[radial-gradient(circle_at_center,transparent_0%,rgba(6,20,34,0.45)_100%)]" />
+
+      {/* Zoom-in hint — shown when zoomed out too far for markers to appear */}
+      {state.viewMode === "2d" && currentZoom < 4 && (
+        <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[800] pointer-events-none">
+          <div className="glass-panel px-5 py-3 rounded-2xl border border-primary/20 flex items-center gap-3 shadow-2xl">
+            <span className="material-symbols-outlined text-primary text-xl animate-pulse">zoom_in</span>
+            <div className="flex flex-col">
+              <span className="font-mono text-[10px] text-primary tracking-widest font-semibold">ZOOM IN TO SEE FLIGHTS</span>
+              <span className="font-mono text-[9px] text-on-surface-variant">Aircraft markers appear at zoom level 4+</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Route deviation alert HUD */}
+      {deviationActive && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[800] glass-panel px-4 py-2.5 rounded-xl border border-error/40 bg-error/15 flex items-center gap-2.5 shadow-lg animate-pulse">
+          <span className="material-symbols-outlined text-error text-lg">warning</span>
+          <div className="flex flex-col">
+            <span className="font-display font-semibold text-[10px] text-error tracking-wider uppercase">ROUTE DEVIATION DETECTED</span>
+            <span className="font-mono text-xs text-primary font-bold">DEVIATION: {Math.round(currentDeviation)} km</span>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Route panel — shown when an aircraft is selected */}
+      {state.selectedIcao && (
+        <div className="absolute left-6 top-6 z-[800] flex flex-col gap-3 w-[220px] glass-panel p-4 rounded-xl shadow-2xl border border-on-surface/10 animate-fade-in">
+          <div className="flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-primary text-sm">route</span>
+            <span className="font-display font-semibold text-[10px] text-primary tracking-widest">ROUTE DISPLAY</span>
+          </div>
+          <p className="font-mono text-[9px] text-on-surface-variant">
+            Click an aircraft marker to load its planned route.
+          </p>
+        </div>
+      )}
 
       {/* Tactical Control Console */}
       {!consoleExpanded ? (
@@ -1619,6 +2004,7 @@ export default function MapView() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

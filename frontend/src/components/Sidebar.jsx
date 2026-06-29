@@ -1,7 +1,10 @@
-import { useStore, ALT_BANDS, REGIONS } from "../store/AppStore";
-import { flightPhase, PHASE_COLORS, routeProgress } from "../utils/geo";
+import { useState, useEffect } from "react";
+import { useStore, ALT_BANDS, AIRLINE_FILTERS } from "../store/AppStore";
+import { flightPhase, PHASE_COLORS, routeProgress, gcDistance, crossTrackDistance } from "../utils/geo";
 import { filterFlights } from "../utils/filters";
 import { useFocusFlight } from "../hooks/useFlights";
+import { FlipBoard } from "./FlipBoard";
+import { API_BASE } from "../utils/api";
 
 const PHASE_FILTERS = ["all", "climb", "descend", "cruise", "ground"];
 const PHASE_LABELS  = { all: "ALL", climb: "▲ CLIMB", descend: "▼ DESCEND", cruise: "→ CRUISE", ground: "⬛ GND" };
@@ -14,7 +17,7 @@ export default function Sidebar() {
     altBand: state.altBand,
     searchQuery: state.searchQuery,
     phaseFilter: state.phaseFilter,
-    region: state.region,
+    selectedAirlines: state.selectedAirlines,
     selectedIcao: state.selectedIcao,
   });
 
@@ -96,30 +99,95 @@ export default function Sidebar() {
           </div>
         </section>
 
-        {/* ── Region filter buttons ── */}
+        {/* ── Airline Filter ── */}
         <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-mono text-on-surface-variant tracking-widest">REGION FILTER</h3>
+            <h3 className="text-xs font-mono text-on-surface-variant tracking-widest">AIRLINE FILTER</h3>
+            {/* Show which airline is active, or ALL */}
+            <span className="font-mono text-[9px] text-primary bg-primary/10 px-2 py-0.5 rounded">
+              {state.selectedAirlines.length === AIRLINE_FILTERS.length
+                ? "ALL AIRLINES"
+                : state.selectedAirlines.length === 1
+                  ? (AIRLINE_FILTERS.find(a => a.id === state.selectedAirlines[0])?.label || "1 ACTIVE").toUpperCase()
+                  : `${state.selectedAirlines.length} ACTIVE`}
+            </span>
           </div>
-          <div className="grid grid-cols-4 gap-1.5">
-            {Object.entries(REGIONS).map(([key, reg]) => (
-              <button
-                key={key}
-                onClick={() => dispatch({ type: "SET_REGION", region: key })}
-                className={`py-2 px-1 rounded-xl border font-mono text-[9px] transition-all text-center ${
-                  state.region === key
-                    ? "bg-primary/20 text-primary border-primary/50 shadow-[0_0_12px_rgba(0,242,255,0.15)]"
-                    : "text-on-surface-variant border-on-surface/10 hover:border-primary/25 hover:text-primary hover:bg-on-surface/5"
-                }`}
-              >
-                <span className="tracking-wide font-semibold">{reg.label}</span>
-              </button>
-            ))}
+
+          {/* ALL button */}
+          <button
+            onClick={() => dispatch({ type: "SET_AIRLINES", airlines: ["IGO", "DLH", "SWA"] })}
+            className={`w-full py-2 rounded-xl border font-mono text-[10px] tracking-widest transition-all ${
+              state.selectedAirlines.length === AIRLINE_FILTERS.length
+                ? "bg-primary/15 text-primary border-primary/40 shadow-[0_0_12px_rgba(0,242,255,0.1)]"
+                : "text-on-surface-variant border-on-surface/10 hover:border-primary/25 hover:text-primary"
+            }`}
+          >
+            ✈ ALL AIRLINES
+          </button>
+
+          {/* Individual airline cards — exclusive selection */}
+          <div className="flex flex-col gap-2">
+            {AIRLINE_FILTERS.map((airline) => {
+              const isExclusivelySelected =
+                state.selectedAirlines.length === 1 &&
+                state.selectedAirlines[0] === airline.id;
+
+              return (
+                <button
+                  key={airline.id}
+                  onClick={() => {
+                    // Clicking the already-exclusively-selected airline resets to ALL
+                    if (isExclusivelySelected) {
+                      dispatch({ type: "SET_AIRLINES", airlines: ["IGO", "DLH", "SWA"] });
+                    } else {
+                      // Exclusive: show ONLY this airline
+                      dispatch({ type: "SET_AIRLINES", airlines: [airline.id] });
+                    }
+                  }}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border font-mono text-xs transition-all ${
+                    isExclusivelySelected
+                      ? "border-[2px] shadow-[0_0_20px_rgba(0,0,0,0.4)]"
+                      : state.selectedAirlines.includes(airline.id)
+                        ? "border opacity-70"
+                        : "text-on-surface-variant border-on-surface/10 hover:border-on-surface/30 opacity-40"
+                  }`}
+                  style={
+                    isExclusivelySelected
+                      ? { borderColor: airline.color, background: `${airline.color}22`, color: airline.color }
+                      : state.selectedAirlines.includes(airline.id)
+                        ? { borderColor: `${airline.color}50`, color: airline.color }
+                        : {}
+                  }
+                >
+                  <span className="text-lg leading-none">{airline.flag}</span>
+                  <div className="flex flex-col items-start flex-1">
+                    <span className="font-semibold tracking-wide text-[11px]">{airline.label}</span>
+                    <span className="text-[9px] opacity-70">{airline.icaoPrefixes.join(" / ")}</span>
+                  </div>
+                  {/* Selection indicator */}
+                  {isExclusivelySelected ? (
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0 animate-pulse"
+                      style={{ backgroundColor: airline.color, boxShadow: `0 0 10px ${airline.color}` }}
+                    />
+                  ) : (
+                    <div className="w-3 h-3 rounded-full flex-shrink-0 border border-current opacity-40" />
+                  )}
+                </button>
+              );
+            })}
           </div>
+
+          <p className="text-center text-[9px] font-mono text-on-surface-variant opacity-60">
+            Click airline to show only its flights · Click again to reset
+          </p>
         </section>
 
         {/* ── Environmental conditions ── */}
         <WeatherPanel />
+
+        {/* ── Route Planner ── */}
+        <RoutePlannerPanel />
 
         {/* ── Active route panel ── */}
         {state.activeRoute && <RoutePanel />}
@@ -185,6 +253,7 @@ export default function Sidebar() {
                     dispatch({ type: "SET_ALT_BAND", band: "all" });
                     dispatch({ type: "SET_PHASE_FILTER", filter: "all" });
                     dispatch({ type: "SET_SEARCH", query: "" });
+                    dispatch({ type: "SET_AIRLINES", airlines: ["IGO", "DLH", "SWA"] });
                   }}
                   className="mt-2 text-xs font-mono text-primary hover:underline"
                 >
@@ -254,16 +323,208 @@ function Row({ label, value }) {
   );
 }
 
+// ─── RoutePlannerPanel ────────────────────────────────────────────────────────
+function RoutePlannerPanel() {
+  const { dispatch, addToast } = useStore();
+  const [depIata, setDepIata] = useState("");
+  const [arrIata, setArrIata] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSearch(e) {
+    e.preventDefault();
+    const dep = depIata.trim().toUpperCase();
+    const arr = arrIata.trim().toUpperCase();
+    if (!dep || !arr || dep.length < 3 || arr.length < 3) {
+      addToast({ kind: "warning", message: "Enter valid 3-letter IATA codes for both airports." });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/routes?dep_iata=${encodeURIComponent(dep)}&arr_iata=${encodeURIComponent(arr)}`);
+      if (!res.ok) throw new Error(`Routes API ${res.status}`);
+      const data = await res.json();
+      if (!data.routes || data.routes.length === 0) {
+        addToast({ kind: "info", message: `No scheduled routes found for ${dep} → ${arr}` });
+        return;
+      }
+      dispatch({
+        type: "SET_SCHEDULED_ROUTE",
+        route: {
+          dep_iata: dep,
+          arr_iata: arr,
+          dep_coords: data.dep_coords || null,
+          arr_coords: data.arr_coords || null,
+          route: data.routes[0],
+          allRoutes: data.routes,
+        },
+      });
+      addToast({ kind: "success", message: `Found ${data.count} route(s) for ${dep} → ${arr}` });
+    } catch (err) {
+      addToast({ kind: "error", message: `Route lookup failed: ${err.message}` });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="text-xs font-mono text-on-surface-variant tracking-widest">ROUTE PLANNER</h3>
+      <form onSubmit={handleSearch} className="glass-panel rounded-xl p-4 flex flex-col gap-3">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            placeholder="DEP (e.g. JFK)"
+            value={depIata}
+            onChange={(e) => setDepIata(e.target.value)}
+            maxLength={4}
+            className="flex-1 bg-transparent border border-on-surface/10 rounded-lg px-3 py-2 text-xs font-mono text-primary placeholder:text-on-surface-variant focus:outline-none focus:border-primary/40 uppercase"
+          />
+          <span className="flex items-center text-on-surface-variant text-xs">→</span>
+          <input
+            type="text"
+            placeholder="ARR (e.g. LAX)"
+            value={arrIata}
+            onChange={(e) => setArrIata(e.target.value)}
+            maxLength={4}
+            className="flex-1 bg-transparent border border-on-surface/10 rounded-lg px-3 py-2 text-xs font-mono text-primary placeholder:text-on-surface-variant focus:outline-none focus:border-primary/40 uppercase"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-2 rounded-lg border border-primary/30 bg-primary/10 text-primary text-xs font-mono hover:bg-primary/20 transition-all disabled:opacity-50"
+        >
+          {loading ? "Searching…" : "Search Routes"}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+
 // ─── RoutePanel ───────────────────────────────────────────────────────────────
 function RoutePanel() {
   const { state, dispatch } = useStore();
   const route = state.activeRoute;
+
+  const [destMetar, setDestMetar] = useState(null);
+  const [loadingMetar, setLoadingMetar] = useState(false);
+
+  const aircraft = route?.aircraft;
+  const points = route?.points;
+  const origin = points?.find((p) => p.type === "origin");
+  const dest   = points?.find((p) => p.type === "destination");
+  const progress = aircraft ? routeProgress(aircraft) : null;
+
+  useEffect(() => {
+    if (!dest?.label) {
+      setDestMetar(null);
+      return;
+    }
+    const queryCode = dest.label.length === 3 ? "K" + dest.label : dest.label;
+    setLoadingMetar(true);
+    fetch(`${API_BASE}/api/weather/metars?ids=${queryCode}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setDestMetar(data.observations?.[0] || null);
+      })
+      .catch(() => setDestMetar(null))
+      .finally(() => setLoadingMetar(false));
+  }, [dest?.label]);
+
   if (!route) return null;
 
-  const { aircraft, points } = route;
-  const origin = points.find((p) => p.type === "origin");
-  const dest   = points.find((p) => p.type === "destination");
-  const progress = routeProgress(aircraft);
+  const originIata = origin?.label?.toUpperCase();
+  const destIata = dest?.label?.toUpperCase();
+
+  // Find live coordinate updates for aircraft from flights state
+  const flight = state.flights.find((f) => f.icao24 === aircraft.icao24);
+  const currentLat = flight ? flight.latitude : aircraft.latitude;
+  const currentLon = flight ? flight.longitude : aircraft.longitude;
+
+  let deviation = 0;
+  let distRemaining = null;
+  let hasDeviationAlert = false;
+  let deviationText = "Normal (<10 km)";
+  let deviationColorClass = "text-tertiary-fixed";
+
+  if (origin && dest) {
+    deviation = crossTrackDistance(
+      currentLat,
+      currentLon,
+      origin.latitude,
+      origin.longitude,
+      dest.latitude,
+      dest.longitude
+    );
+    distRemaining = gcDistance(currentLat, currentLon, dest.latitude, dest.longitude);
+
+    if (deviation >= 50) {
+      deviationText = `Major Deviation (${Math.round(deviation)} km)`;
+      deviationColorClass = "text-error";
+      hasDeviationAlert = true;
+    } else if (deviation >= 10) {
+      deviationText = `Minor Deviation (${Math.round(deviation)} km)`;
+      deviationColorClass = "text-secondary";
+      hasDeviationAlert = true;
+    }
+  }
+
+  function getDelayRisk() {
+    let score = 0;
+    let reasons = [];
+
+    if (destMetar) {
+      const cat = destMetar.flight_category || "VFR";
+      if (cat === "LIFR") {
+        score += 4;
+        reasons.push("Low Instrument Flight Rules (LIFR) at destination");
+      } else if (cat === "IFR") {
+        score += 3;
+        reasons.push("Instrument Flight Rules (IFR) conditions");
+      } else if (cat === "MVFR") {
+        score += 1.5;
+        reasons.push("Marginal Visual Flight Rules (MVFR) conditions");
+      }
+
+      const speed = destMetar.wind_speed_kt ?? 0;
+      if (speed > 25) {
+        score += 3;
+        reasons.push(`High surface winds at destination (${speed} kts)`);
+      } else if (speed > 15) {
+        score += 1.5;
+        reasons.push(`Moderate surface winds at destination (${speed} kts)`);
+      }
+
+      const vis = destMetar.visibility_sm ?? 10;
+      if (vis < 2) {
+        score += 3;
+        reasons.push(`Low visibility at destination (${vis} SM)`);
+      } else if (vis < 5) {
+        score += 1.5;
+        reasons.push(`Moderate visibility at destination (${vis} SM)`);
+      }
+    }
+
+    if (deviation != null && deviation > 30) {
+      score += 2;
+      reasons.push("Significant flight path route deviation");
+    }
+
+    let risk = "LOW";
+    let color = "text-tertiary-fixed";
+    if (score >= 5) {
+      risk = "HIGH";
+      color = "text-error";
+    } else if (score >= 2) {
+      risk = "MODERATE";
+      color = "text-[#ffca7a]";
+    }
+
+    return { risk, color, reasons };
+  }
+
+  const delayInfo = getDelayRisk();
 
   return (
     <section className="flex flex-col gap-3">
@@ -281,20 +542,31 @@ function RoutePanel() {
           </div>
           <div className="flex flex-col gap-2 flex-1 min-w-0">
             <div>
-              <div className="font-mono text-sm text-[#ffca7a]">{origin?.label || "---"}</div>
+              <FlipBoard text={origin?.label || "---"} lettersCount={3} className="text-sm font-semibold" />
               <div className="text-xs text-on-surface-variant truncate">{aircraft.origin_name || "Origin Airport"}</div>
             </div>
-            <div className="text-center">
-              <span className="font-display text-primary text-xs bg-primary/10 px-2 py-0.5 rounded-full">
-                {aircraft.callsign || aircraft.icao24?.toUpperCase()}
+            <div className="flex justify-center">
+              <span className="inline-block bg-primary/10 px-2 py-1 rounded-full">
+                <FlipBoard text={aircraft.callsign || aircraft.icao24?.toUpperCase() || ""} lettersCount={7} className="text-[10px] font-bold" />
               </span>
             </div>
             <div className="text-right">
-              <div className="font-mono text-sm text-[#ffca7a]">{dest?.label || "---"}</div>
+              <FlipBoard text={dest?.label || "---"} lettersCount={3} className="justify-end text-sm font-semibold" />
               <div className="text-xs text-on-surface-variant truncate">{aircraft.destination_name || "Destination Airport"}</div>
             </div>
           </div>
         </div>
+
+        {/* Flashing deviation alert banner */}
+        {hasDeviationAlert && (
+          <div className="bg-error/15 border border-error/30 rounded-lg p-3 flex items-center gap-2 animate-pulse mb-1">
+            <span className="material-symbols-outlined text-error text-sm">warning</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] font-display font-bold text-error tracking-wider uppercase">ROUTE DEVIATION DETECTED</div>
+              <div className="text-[9px] font-mono text-on-surface-variant">The aircraft has deviated {Math.round(deviation)} km from the planned great-circle path.</div>
+            </div>
+          </div>
+        )}
 
         {/* Progress bar */}
         {progress != null && (
@@ -321,12 +593,41 @@ function RoutePanel() {
           <StatCell label="SPEED KT" value={aircraft.velocity_kts != null ? aircraft.velocity_kts : "--"} />
           <StatCell label="HDG DEG"  value={aircraft.heading != null ? Math.round(aircraft.heading) : "--"} />
         </div>
+        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-on-surface/5">
+          <StatCell label="REMAIN KM" value={distRemaining != null ? Math.round(distRemaining).toLocaleString() : "--"} />
+          <StatCell label="DEV KM" value={deviation != null ? Math.round(deviation).toLocaleString() : "--"} />
+          <StatCell
+            label="DEV STATUS"
+            value={<span className={`${deviationColorClass} font-bold text-[10px]`}>{deviation >= 10 ? (deviation >= 50 ? "MAJOR" : "MINOR") : "NORMAL"}</span>}
+          />
+        </div>
+
+
+        {/* Delay Predictor Panel */}
+        <div className="glass-panel rounded-lg p-3 flex flex-col gap-1 border border-on-surface/5">
+          <div className="flex justify-between items-center text-[10px] font-mono text-on-surface-variant">
+            <span>DELAY RISK INDEX</span>
+            <span className={`${delayInfo.color} font-bold animate-pulse`}>{delayInfo.risk}</span>
+          </div>
+          {delayInfo.reasons.length > 0 ? (
+            <div className="text-[9px] text-on-surface-variant flex flex-col gap-0.5 mt-1 border-t border-on-surface/5 pt-1">
+              {delayInfo.reasons.map((r, i) => (
+                <div key={i} className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
+                  <span>{r}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[9px] text-tertiary-fixed mt-1">✓ No active weather or flight path risks detected.</div>
+          )}
+        </div>
 
         {/* Actions */}
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           <button
             onClick={() => dispatch({ type: "TOGGLE_LOCK_VIEW" })}
-            className={`flex-1 text-xs font-mono py-1.5 rounded-lg border transition-all ${
+            className={`w-full text-[11px] font-mono py-1.5 rounded-lg border transition-all ${
               state.lockView
                 ? "bg-primary/20 text-primary border-primary/40"
                 : "text-on-surface-variant border-on-surface/10 hover:border-primary/20 hover:text-primary"
@@ -336,7 +637,7 @@ function RoutePanel() {
           </button>
           <button
             onClick={() => dispatch({ type: "CLEAR_ROUTE" })}
-            className="flex-1 text-xs font-mono text-on-surface-variant hover:text-error transition-colors
+            className="w-full text-[11px] font-mono text-on-surface-variant hover:text-error transition-colors
                        py-1.5 rounded-lg border border-on-surface/10 hover:border-error/30"
           >
             ✕ Clear Route

@@ -1,0 +1,5 @@
+# Node.js backend — generated .gitignore
+node_modules/
+.env
+data/
+*.log

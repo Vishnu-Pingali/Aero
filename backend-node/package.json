@@ -1,0 +1,26 @@
+{
+  "name": "aero-ops-backend",
+  "version": "1.0.0",
+  "description": "Aero Ops Intelligence API — Node.js/Express backend",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "async-mutex": "^0.5.0",
+    "axios": "^1.7.9",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "node-cache": "^5.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  },
+  "nodemonConfig": {
+    "ignore": ["data/*", "*.json"],
+    "ext": "js,mjs"
+  }
+}

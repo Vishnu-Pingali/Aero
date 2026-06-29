@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useStore } from "../store/AppStore";
 import { flightsUrl, API_BASE, SSE_URL, POLL_MS, US_METAR_STATIONS } from "../utils/api";
-import { featureIntersectsUsBbox, extractHazards } from "../utils/geo";
+import { extractHazards } from "../utils/geo";
 
 // ─── useFlightPolling ─────────────────────────────────────────────────────────
 export function useFlightPolling(map) {
@@ -94,7 +94,7 @@ export function useFlightPolling(map) {
       const res = await fetch(`${API_BASE}/api/weather/sigmets`);
       if (!res.ok) throw new Error(`SIGMET API ${res.status}`);
       const payload = await res.json();
-      const features = (payload.geojson?.features || []).filter(featureIntersectsUsBbox);
+      const features = payload.geojson?.features || [];
       dispatch({ type: "SET_SIGMETS", sigmets: features });
 
       if (features.length > prevSigmetCount.current && prevSigmetCount.current > 0) {
@@ -128,36 +128,71 @@ export function useFlightPolling(map) {
   useEffect(() => {
     if (map === undefined) return;
 
-    // Immediately fetch current data from the backend JSON cache
-    fetchFlights(true);
-    fetchSigmets();
-    fetchMetars();
+    let fallbackTimer = null;
+    let sigmetTimer = null;
+    let metarTimer = null;
+    let isSuspended = false;
 
-    // Open the SSE connection — the backend will push "refresh" events every 10 min.
-    // No setInterval for flights; the SSE event triggers fetchFlights() instead.
-    connectSSE();
+    function startTimersAndSSE() {
+      if (isSuspended) return;
+      console.log("[Visibility] Tab is active. Starting/resuming SSE stream and background timers.");
 
-    // Fallback interval: if SSE stays disconnected for some reason, re-fetch once
-    // per 10-min cycle so the UI never goes stale.
-    const fallbackTimer = setInterval(() => {
-      if (!sseRef.current || sseRef.current.readyState === EventSource.CLOSED) {
-        console.warn("[fallback] SSE not connected — polling manually");
-        fetchFlights(false);
+      // Fetch immediately
+      fetchFlights(true);
+      fetchSigmets();
+      fetchMetars();
+
+      connectSSE();
+
+      // Clear any pre-existing timers just in case
+      if (fallbackTimer) clearInterval(fallbackTimer);
+      if (sigmetTimer) clearInterval(sigmetTimer);
+      if (metarTimer) clearInterval(metarTimer);
+
+      fallbackTimer = setInterval(() => {
+        if (!sseRef.current || sseRef.current.readyState === EventSource.CLOSED) {
+          console.warn("[fallback] SSE not connected — polling manually");
+          fetchFlights(false);
+        }
+      }, POLL_MS);
+
+      sigmetTimer = setInterval(fetchSigmets, 60_000);
+      metarTimer = setInterval(fetchMetars, 60_000);
+    }
+
+    function stopTimersAndSSE() {
+      console.log("[Visibility] Tab is hidden. Suspending SSE stream and background timers.");
+      if (fallbackTimer) { clearInterval(fallbackTimer); fallbackTimer = null; }
+      if (sigmetTimer) { clearInterval(sigmetTimer); sigmetTimer = null; }
+      if (metarTimer) { clearInterval(metarTimer); metarTimer = null; }
+
+      clearTimeout(sseReconnectTimer.current);
+      if (sseRef.current) {
+        sseRef.current.close();
+        sseRef.current = null;
       }
-    }, POLL_MS);
+      aborterRef.current?.abort();
+    }
 
-    // SIGMETs and METARs still poll independently (external weather APIs)
-    const sigmetTimer = setInterval(fetchSigmets, 60_000);
-    const metarTimer  = setInterval(fetchMetars,  60_000);
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        isSuspended = true;
+        stopTimersAndSSE();
+      } else {
+        isSuspended = false;
+        startTimersAndSSE();
+      }
+    }
+
+    // Initial startup
+    startTimersAndSSE();
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      clearInterval(fallbackTimer);
-      clearInterval(sigmetTimer);
-      clearInterval(metarTimer);
-      clearTimeout(sseReconnectTimer.current);
-      sseRef.current?.close();
-      sseRef.current = null;
-      aborterRef.current?.abort();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      isSuspended = true;
+      stopTimersAndSSE();
     };
   }, [map, fetchFlights, fetchSigmets, fetchMetars, connectSSE]);
 
@@ -172,6 +207,16 @@ export function useFocusFlight() {
     async (icao24, markerLatLng = null) => {
       let flight = state.flights.find((f) => f.icao24 === icao24);
       if (!flight) return;
+
+      // Skip fetching if this flight is already selected and its route is loaded
+      if (
+        state.selectedIcao === icao24 &&
+        state.activeRoute &&
+        state.activeRoute.aircraft?.icao24 === icao24
+      ) {
+        console.debug(`[useFocusFlight] route already loaded for ${icao24}, skipping fetch`);
+        return;
+      }
 
       dispatch({ type: "SET_SELECTED_ICAO", icao: icao24 });
 
@@ -197,6 +242,6 @@ export function useFocusFlight() {
         });
       }
     },
-    [state.flights, dispatch, addToast]
+    [state.flights, state.selectedIcao, state.activeRoute, dispatch, addToast]
   );
 }

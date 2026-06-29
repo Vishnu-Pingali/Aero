@@ -1,24 +1,38 @@
-import { ALT_BANDS, REGIONS } from "../store/AppStore";
+import { ALT_BANDS, AIRLINE_FILTERS } from "../store/AppStore";
 import { flightPhase } from "./geo";
 
 /**
- * Central flight filtering — shared between MapView, GlobeView and Sidebar.
- * Uses altBand preset + searchQuery + phaseFilter + region from state.
+ * Returns the airline ID for a flight based on its callsign prefix.
+ * Returns null if no match is found.
  */
-export function filterFlights(flights, { altBand = "all", searchQuery = "", phaseFilter = "all", region = "all", selectedIcao = null } = {}) {
+export function detectAirline(flight) {
+  const cs = (flight.callsign || "").toUpperCase().trim();
+  if (!cs) return null;
+  for (const airline of AIRLINE_FILTERS) {
+    for (const prefix of airline.icaoPrefixes) {
+      if (cs.startsWith(prefix)) return airline.id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Central flight filtering — shared between MapView and Sidebar.
+ * Filters by: selectedAirlines (required), altBand, searchQuery, phaseFilter.
+ */
+export function filterFlights(flights, { altBand = "all", searchQuery = "", phaseFilter = "all", selectedAirlines = [], selectedIcao = null } = {}) {
   if (selectedIcao) {
     return flights.filter((f) => f.icao24 === selectedIcao);
   }
 
   const band = ALT_BANDS[altBand] || ALT_BANDS.all;
-  const reg  = REGIONS[region] || REGIONS.all;
   const q = searchQuery.toLowerCase().trim();
 
   return flights.filter((f) => {
-    // Region filter
-    if (region !== "all") {
-      const lon = f.longitude;
-      if (lon < reg.lomin || lon > reg.lomax) return false;
+    // Airline filter — REQUIRED: only show flights from selected airlines
+    if (selectedAirlines.length > 0) {
+      const airlineId = detectAirline(f);
+      if (!airlineId || !selectedAirlines.includes(airlineId)) return false;
     }
 
     // Altitude band

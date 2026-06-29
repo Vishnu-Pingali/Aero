@@ -12,9 +12,9 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Open the dashboard at `http://127.0.0.1:8000/dashboard`.
+Run the React frontend via Vite (under the `frontend/` directory) to view the map dashboard.
 
-Open API docs at `http://127.0.0.1:8000/docs`.
+Open the API Swagger docs at `http://127.0.0.1:8000/docs`.
 
 ## Credentials
 

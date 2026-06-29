@@ -1,183 +1,126 @@
 # Aero Ops Intelligence
 
-Real-time aviation situational awareness prototype for India-focused flight tracking. The project now includes a production-structured FastAPI backend, live OpenSky aircraft integration, AviationWeather SIGMET and METAR weather data, and a Leaflet dashboard frontend.
+Real-time aviation situational awareness dashboard. The project features a choice of backends (Python FastAPI or Node.js Express) querying live AirLabs position data and AviationWeather.gov METAR/SIGMET services, paired with an interactive React + Vite + Tailwind CSS map dashboard.
 
-## What Has Been Built
+---
 
-- FastAPI backend under `backend/app`
-- OpenSky OAuth2 client-credentials authentication
-- Automatic OpenSky token refresh before expiry
-- Async HTTP calls with `httpx.AsyncClient`
-- Short-lived in-memory caching with `aiocache`
-- Duplicate request prevention for cached upstream calls
-- India-first bounded aircraft polling instead of global OpenSky requests
-- Typed Pydantic responses for flights and weather
-- AviationWeather SIGMET GeoJSON integration
-- AviationWeather METAR weather integration
-- ADSB.lol live aircraft fallback when OpenSky is unreachable
-- Leaflet map dashboard served from FastAPI at `/dashboard`
-- Live aircraft marker updates every 5 seconds
-- Rotating aircraft icons based on heading
-- Aircraft popup cards with speed, altitude, heading, and vertical rate
-- Altitude filter slider
-- Live aircraft sidebar list
-- SIGMET weather polygon overlay
-- India METAR weather card showing wind, visibility, temperature, altimeter, and flight category
-- Swagger/OpenAPI docs at `/docs`
+## Architecture & Features
 
-## Current Region
+### 1. Dual Backend Support
+You can run either backend; both expose a unified API for the frontend and keep a cached state to prevent rate-limiting the upstream APIs:
+- **Node.js Express Backend (`backend-node/`)**: A clean ES module implementation with standard Express routing, asynchronous file operations, and robust Server-Sent Events (SSE) broadcasting.
+- **Python FastAPI Backend (`backend/`)**: A Python-based alternative with typed Pydantic responses, dependency injection, and in-memory caching.
 
-The system is configured for India by default.
+### 2. Frontend Dashboard (`frontend/`)
+An interactive React + Vite single-page application styled with Tailwind CSS, Outfit typography, and Leaflet Maps:
+- **FlightRadar24-Style trails**: Renders continuous, historical ADS-B position trails (up to 1,000 points) on a canvas layer with smooth HSL color gradients (cyan for new positions fading to deep blue for historical ones) and a dual-stroke glow.
+- **Dynamic Filtering**: A slider to dynamically filter visible flights by altitude.
+- **Sidebar Details & Route Loaders**: Select any flight to view detailed aircraft statistics and origin/destination route waypoints.
+- **Weather Layers**: Renders SIGMET GeoJSON hazard polygons and METAR weather reports for major US airport hubs (KJFK, KLAX, KORD, KATL, KDFW, KDEN, KSFO, KMIA).
 
-Default flight bounding box:
-
-```text
-lamin=6
-lomin=68
-lamax=37.5
-lomax=97.5
-```
-
-Default METAR stations:
-
-```text
-VIDP  Delhi
-VABB  Mumbai
-VOBL  Bengaluru
-VOMM  Chennai
-VOHS  Hyderabad
-VECC  Kolkata
-VAAH  Ahmedabad
-```
+---
 
 ## Project Structure
 
 ```text
 Aero/
-├── backend/
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── auth/
-│   │   ├── cache/
-│   │   ├── config/
-│   │   ├── models/
-│   │   ├── routes/
-│   │   ├── services/
-│   │   └── utils/
-│   ├── credentials/
-│   │   └── credentials.json
-│   ├── requirements.txt
-│   ├── .env
-│   └── README.md
-├── frontend/
-│   ├── code.html
-│   ├── DESIGN.md
-│   └── screen.png
-└── credentials.json
+├── backend/            # Python FastAPI Backend
+│   ├── app/            # FastAPI source (main.py, routes, config, services)
+│   ├── credentials/    # AirLabs credentials storage
+│   └── requirements.txt
+├── backend-node/       # Node.js Express Backend (recommended)
+│   ├── src/            # Express source (server.js, app.js, routes, services)
+│   ├── credentials/    # AirLabs credentials storage
+│   └── package.json
+├── frontend/           # React + Vite + Leaflet Frontend
+│   ├── src/            # React source code (components, hooks, store, utils)
+│   ├── index.html      # Leaflet map container mount
+│   └── package.json
+├── credentials.json    # Root fallback AirLabs credentials
+└── setup-node-backend.ps1  # Helper script to swap backend folder names
 ```
 
-## Run Locally
+---
 
-```powershell
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+## Setup & Running Locally
 
-Then open:
-
-```text
-http://127.0.0.1:8000/dashboard
-```
-
-API docs:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-## Local-Only Setup
-
-This repo is now intended to run locally on your machine. 
-
-Recommended local environment:
-
-```text
-ENVIRONMENT=production
-LOG_LEVEL=INFO
-OPENSKY_AUTH_ENABLED=true
-OPENSKY_FORCE_AUTH=true
-OPENSKY_CACHE_TTL_SECONDS=4
-OPENSKY_TIMEOUT_SECONDS=30
-WEATHER_CACHE_TTL_SECONDS=60
-OPENSKY_MIN_REQUEST_INTERVAL_SECONDS=1.0
-INDIA_SNAPSHOT_REFRESH_SECONDS=30
-INDIA_TILE_TIMEOUT_SECONDS=8
-DEMO_FALLBACK_ENABLED=false
-```
-
-Run from `backend/` and open the dashboard at:
-
-```text
-http://127.0.0.1:8000/dashboard
-```
-
-## API Endpoints
-
-```text
-GET /health
-GET /
-GET /dashboard
-GET /api/flights
-GET /api/flights/region?lamin=6&lomin=68&lamax=37.5&lomax=97.5
-GET /api/flights/altitude?min_alt=10000&max_alt=40000
-GET /api/weather/sigmets
-GET /api/weather/metars?ids=VIDP,VABB,VOBL,VOMM,VOHS,VECC,VAAH
-```
-
-## Credentials
-
-OpenSky credentials are loaded automatically from:
-
-```text
-backend/credentials/credentials.json
-```
-
-If missing, the backend falls back to:
-
-```text
-credentials.json
-```
-
-Expected format:
+### 1. Configure Credentials
+The backends require an **AirLabs API key** for flight data. Create a `credentials.json` file in either `backend-node/credentials/` or `backend/credentials/` (or at the repository root `credentials.json` as a fallback):
 
 ```json
 {
-  "clientId": "your-client-id",
-  "clientSecret": "your-client-secret"
+  "airlabs_api_key": "YOUR_AIRLABS_API_KEY"
 }
 ```
 
-For production, use `OPENSKY_CLIENT_ID` and `OPENSKY_CLIENT_SECRET` environment variables instead of uploading credential JSON files.
+Alternatively, set the `AIRLABS_API_KEY` environment variable in your `.env` file.
 
-## Verified So Far
+---
 
-- FastAPI app imports successfully
-- Python source compiles
-- `/health` returns OK
-- `/dashboard` serves the frontend
-- OpenSky OAuth token flow works
-- India region flight endpoint returned live aircraft
-- Indian METAR endpoint returned live observations
-- SIGMET endpoint returned live GeoJSON
-- Frontend is wired to backend APIs
+### 2. Running the Node.js Backend (Recommended)
+1. Navigate to the Node.js backend directory:
+   ```powershell
+   cd backend-node
+   ```
+2. Install dependencies:
+   ```powershell
+   npm install
+   ```
+3. Run the development server (configured to reload automatically):
+   ```powershell
+   npm run dev
+   ```
+   *The backend starts listening on `http://127.0.0.1:8000`.*
 
-## Notes
+---
 
-- The dashboard polls aircraft every 5 seconds.
-- The backend keeps a full-India aircraft snapshot warm in the background and serves dashboard requests from that snapshot.
-- Demo fallback is disabled by default. The deployed dashboard is intended to use live OpenSky data.
-- ADSB.lol is enabled as a live aircraft fallback if OpenSky is unreachable from the host.
-- Weather data is cached for 60 seconds.
-- OpenSky flight responses are cached briefly to smooth polling.
-- The backend intentionally avoids global OpenSky calls and uses bounding boxes for performance and rate-limit safety.
+### 3. Running the Python Backend (Alternative)
+1. Navigate to the Python backend directory:
+   ```powershell
+   cd backend
+   ```
+2. Set up a virtual environment and activate it:
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+3. Install dependencies:
+   ```powershell
+   pip install -r requirements.txt
+   ```
+4. Start the FastAPI development server:
+   ```powershell
+   uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+   ```
+
+---
+
+### 4. Running the React Frontend
+1. Navigate to the frontend directory:
+   ```powershell
+   cd frontend
+   ```
+2. Install dependencies:
+   ```powershell
+   npm install
+   ```
+3. Run the Vite development server:
+   ```powershell
+   npm run dev
+   ```
+4. Open the printed local URL (typically `http://localhost:5173`) in your browser to view the dashboard.
+
+---
+
+## Core API Endpoints
+
+Both backends expose the following REST endpoints:
+
+- `GET /health`: Basic health check.
+- `GET /api/flights`: Returns cached flights matching the default US bounding box.
+- `GET /api/flights/region`: Query flights for a custom bounding box (requires `lamin`, `lomin`, `lamax`, `lomax`).
+- `GET /api/flights/altitude`: Filter flights by `min_alt` and `max_alt` query parameters.
+- `GET /api/flights/aircraft/:icao24/route`: Returns origin, destination, and current coordinates for a specific flight.
+- `GET /api/flights/stream`: Server-Sent Events (SSE) connection that clients subscribe to for receiving real-time `'refresh'` notifications when the backend cache is updated.
+- `GET /api/weather/sigmets`: Live weather advisory GeoJSON polygons from AviationWeather.gov.
+- `GET /api/weather/metars`: Meteorological airport observations for default stations.

@@ -104,28 +104,30 @@ html, body, #root {
 .sigmet-moderate { stroke: #ffca7a; fill: #ffca7a; }
 .sigmet-advisory { stroke: var(--color-secondary); fill: var(--color-secondary); }
 
-/* ─── Aircraft markers ────────────────────────────────────────────────────── */
+/* ─── Aircraft markers ────────────────────────────────────────── */
 .aircraft-marker {
-  width: 34px; height: 34px;
+  width: 40px; height: 40px;
   display: grid; place-items: center;
   filter: drop-shadow(0 0 10px var(--marker-glow, rgba(0, 219, 231, 0.75)));
   transition: transform 350ms ease;
 }
-.aircraft-marker .material-symbols-outlined {
-  font-size: 28px;
+.aircraft-marker .aircraft-svg {
+  width: 38px;
+  height: 38px;
   transform: rotate(var(--heading, 0deg));
   transition: transform 0.8s ease;
-  color: var(--marker-color, #e1fdff);
+  fill: var(--marker-color, #e1fdff);
+  overflow: visible;
 }
 .aircraft-marker-label {
-  position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+  position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
   font-family: "JetBrains Mono", monospace; font-size: 9px; font-weight: 600;
   color: var(--marker-color, #e1fdff); white-space: nowrap;
   text-shadow: var(--marker-label-shadow); letter-spacing: 0.04em;
   pointer-events: none;
 }
 .aircraft-marker-pulse {
-  position: absolute; width: 34px; height: 34px; border-radius: 50%;
+  position: absolute; width: 40px; height: 40px; border-radius: 50%;
   border: 2px solid var(--marker-color, #00dbe7);
   animation: pulseRing 2s ease-in-out infinite;
 }
@@ -133,6 +135,10 @@ html, body, #root {
 /* ─── Route arc animation ─────────────────────────────────────────────────── */
 @keyframes dashFlow { to { stroke-dashoffset: -40; } }
 .route-line-animated { animation: dashFlow 1.2s linear infinite; }
+
+/* ─── Scheduled route line ────────────────────────────────────────────────── */
+@keyframes scheduledDash { to { stroke-dashoffset: -36; } }
+.scheduled-route-line { animation: scheduledDash 2s linear infinite; }
 
 /* ─── Live location ring ──────────────────────────────────────────────────── */
 .live-location-ring { filter: drop-shadow(0 0 16px rgba(98, 255, 150, 0.75)); }
@@ -295,4 +301,44 @@ input[type="range"] { accent-color: var(--color-primary-container); }
 .light .cockpit-switch-input:checked ~ .cockpit-switch-indicator {
   background-color: var(--color-primary-container);
   box-shadow: 0 0 4px var(--color-primary-container);
+}
+
+/* Split-flap animations */
+.perspective-300 {
+  perspective: 300px;
+}
+
+@keyframes splitFlap {
+  0% {
+    transform: rotateX(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: rotateX(-90deg);
+    opacity: 0.5;
+  }
+  100% {
+    transform: rotateX(-180deg);
+    opacity: 0;
+  }
+}
+
+.animate-split-flap {
+  animation: splitFlap 0.35s ease-in forwards;
+  backface-visibility: hidden;
+}
+
+/* Flow-trail polyline style */
+@keyframes flowTrailAnim {
+  0% {
+    stroke-dashoffset: 40;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.flow-trail {
+  animation: flowTrailAnim 1.8s linear infinite !important;
+  filter: drop-shadow(0 0 6px rgba(0, 242, 255, 0.85));
 }

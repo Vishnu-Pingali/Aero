@@ -25,7 +25,7 @@ export default function StatsBar() {
       altBand: state.altBand,
       searchQuery: state.searchQuery,
       phaseFilter: state.phaseFilter,
-      region: state.region,
+      selectedAirlines: state.selectedAirlines,
       selectedIcao: state.selectedIcao,
     });
     if (!flights.length) return null;
@@ -46,7 +46,7 @@ export default function StatsBar() {
     }
 
     return { climbCount, descendCount, cruiseCount, groundCount, maxAltFlight, maxSpdFlight, maxAlt, maxSpd, total: flights.length };
-  }, [state.flights, state.altBand, state.searchQuery, state.phaseFilter, state.region, state.selectedIcao]);
+  }, [state.flights, state.altBand, state.searchQuery, state.phaseFilter, state.selectedAirlines, state.selectedIcao]);
 
   if (!stats) return null;
 

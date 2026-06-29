@@ -9,13 +9,18 @@ export const ALT_BANDS = {
   high: { label: ">35K", min: 35000, max: 99999, icon: "flight_takeoff" },
 };
 
-// ─── Region presets ────────────────────────────────────────────────────────────
-export const REGIONS = {
-  all: { label: "US-ALL", lomin: -125, lomax: -66, center: [39.5, -98.35], zoom: 5 },
-  west: { label: "WEST", lomin: -125, lomax: -103, center: [38.0, -114.0], zoom: 5.5 },
-  central: { label: "CENTRAL", lomin: -103, lomax: -87, center: [38.0, -95.0], zoom: 5.5 },
-  east: { label: "EAST", lomin: -87, lomax: -66, center: [38.0, -76.5], zoom: 5.5 },
-};
+// ─── Airline filter presets ─────────────────────────────────────────────────────
+// These are the ONLY airlines tracked in this system.
+export const AIRLINE_FILTERS = [
+  // icaoPrefixes includes both ICAO callsign prefix AND IATA code, since AirLabs can return either
+  { id: "IGO",  label: "IndiGo",   icaoPrefixes: ["IGO", "6E"],        flag: "🇮🇳", color: "#1a73e8" },
+  { id: "DLH",  label: "Lufthansa", icaoPrefixes: ["DLH", "LHA", "LH"], flag: "🇩🇪", color: "#00a3e0" },
+  { id: "SWA",  label: "Southwest", icaoPrefixes: ["SWA", "WN"],        flag: "🇺🇸", color: "#f04e37" },
+];
+
+// Keep REGIONS exported (empty) for backward compat with any import that still references it
+export const REGIONS = {};
+
 
 // ─── Initial state ─────────────────────────────────────────────────────────────
 const initialState = {
@@ -36,19 +41,73 @@ const initialState = {
   searchQuery: "",
   phaseFilter: "all",          // "all" | "climb" | "descend" | "cruise" | "ground"
   altBand: "all",              // "all" | "ground" | "low" | "mid" | "high"
-  region: "all",               // "all" | "west" | "central" | "east"
+  region: "all",
   viewMode: "2d",              // "2d" | "3d"
   isFetching: false,
   showEmergencyModal: false,
   theme: "dark",               // "dark" | "light"
+  flightTrails: {},            // { icao24: [ { lat, lon, ts }, ... ] }
+  // All 3 airlines selected by default — user can deselect to hide
+  selectedAirlines: ["IGO", "DLH", "SWA"],
+  selectedScheduledRoute: null,
 };
 
 
 // ─── Reducer ───────────────────────────────────────────────────────────────────
 function reducer(state, action) {
   switch (action.type) {
-    case "SET_FLIGHTS":
-      return { ...state, flights: action.flights, lastUpdated: new Date(), isFetching: false };
+    case "SET_FLIGHTS": {
+      const now = Date.now();
+      const updatedTrails = { ...state.flightTrails };
+      const activeIcaos = new Set(action.flights.map(f => f.icao24.toLowerCase()));
+
+      action.flights.forEach(f => {
+        const icao = f.icao24.toLowerCase();
+        if (f.trail && f.trail.length > 0) {
+          updatedTrails[icao] = f.trail;
+        } else {
+          // Fallback to local tracking accumulation if backend doesn't supply trail
+          const lat = f.latitude;
+          const lon = f.longitude;
+          if (lat == null || lon == null) return;
+
+          const history = updatedTrails[icao] || [];
+          const lastPt = history[history.length - 1];
+          if (!lastPt || lastPt.lat !== lat || lastPt.lon !== lon) {
+            updatedTrails[icao] = [
+              ...history,
+              {
+                lat,
+                lon,
+                altitude: f.altitude_ft || 0,
+                heading: f.heading || 0,
+                timestamp: Math.floor(now / 1000),
+                ts: now
+              }
+            ];
+            // Keep a cap of 1000 points locally too
+            if (updatedTrails[icao].length > 1000) {
+              updatedTrails[icao].shift();
+            }
+          }
+        }
+      });
+
+      // Cleanup trails of flights no longer active
+      for (const icao in updatedTrails) {
+        if (!activeIcaos.has(icao)) {
+          delete updatedTrails[icao];
+        }
+      }
+
+      return {
+        ...state,
+        flights: action.flights,
+        flightTrails: updatedTrails,
+        lastUpdated: new Date(),
+        isFetching: false
+      };
+    }
     case "SET_DATA_AGE":
       return { ...state, dataAge: action.fetchedAt };
     case "SET_CONNECTION":
@@ -61,14 +120,51 @@ function reducer(state, action) {
         idx >= 0
           ? state.flights.map((f, i) => (i === idx ? action.flight : f))
           : [action.flight, ...state.flights];
-      return { ...state, flights };
+
+      const now = Date.now();
+      const updatedTrails = { ...state.flightTrails };
+      const icao = action.flight.icao24.toLowerCase();
+
+      if (action.flight.trail && action.flight.trail.length > 0) {
+        updatedTrails[icao] = action.flight.trail;
+      } else {
+        const lat = action.flight.latitude;
+        const lon = action.flight.longitude;
+
+        if (lat != null && lon != null) {
+          const history = updatedTrails[icao] || [];
+          const lastPt = history[history.length - 1];
+          if (!lastPt || lastPt.lat !== lat || lastPt.lon !== lon) {
+            updatedTrails[icao] = [
+              ...history,
+              {
+                lat,
+                lon,
+                altitude: action.flight.altitude_ft || 0,
+                heading: action.flight.heading || 0,
+                timestamp: Math.floor(now / 1000),
+                ts: now
+              }
+            ];
+            if (updatedTrails[icao].length > 1000) {
+              updatedTrails[icao].shift();
+            }
+          }
+        }
+      }
+
+      return { ...state, flights, flightTrails: updatedTrails };
     }
     case "SET_SELECTED_ICAO":
-      return { ...state, selectedIcao: action.icao };
+      return { ...state, selectedIcao: action.icao, selectedScheduledRoute: null };
     case "SET_ACTIVE_ROUTE":
-      return { ...state, activeRoute: action.route };
+      return { ...state, activeRoute: action.route, selectedScheduledRoute: null };
     case "CLEAR_ROUTE":
-      return { ...state, activeRoute: null, selectedIcao: null };
+      return { ...state, activeRoute: null, selectedIcao: null, selectedScheduledRoute: null };
+    case "SET_SCHEDULED_ROUTE":
+      return { ...state, selectedScheduledRoute: action.route };
+    case "CLEAR_SCHEDULED_ROUTE":
+      return { ...state, selectedScheduledRoute: null };
     case "SET_SIGMETS":
       return { ...state, sigmets: action.sigmets };
     case "TOGGLE_SIGMETS":
@@ -97,8 +193,20 @@ function reducer(state, action) {
       return { ...state, altBand: action.band };
     case "SET_REGION":
       return { ...state, region: action.region };
+    case "TOGGLE_AIRLINE": {
+      const already = state.selectedAirlines.includes(action.airline);
+      const selectedAirlines = already
+        ? state.selectedAirlines.filter((a) => a !== action.airline)
+        : [...state.selectedAirlines, action.airline];
+      return { ...state, selectedAirlines };
+    }
+    case "CLEAR_AIRLINES":
+      return { ...state, selectedAirlines: [] };
+    case "SET_AIRLINES":
+      return { ...state, selectedAirlines: action.airlines };
     case "SET_VIEW_MODE":
       return { ...state, viewMode: action.mode };
+
     case "TOGGLE_EMERGENCY_MODAL":
       return { ...state, showEmergencyModal: !state.showEmergencyModal };
     case "TOGGLE_THEME": {

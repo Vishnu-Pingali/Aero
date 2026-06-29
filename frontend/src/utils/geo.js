@@ -60,6 +60,19 @@ export function gcDistance(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ─── Cross-track distance (km deviation from planned track) ────────────────────
+export function crossTrackDistance(latVal, lonVal, lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const d13 = gcDistance(lat1, lon1, latVal, lonVal);
+  const angularDist = d13 / R;
+  const bear13 = toRad(bearingTo(lat1, lon1, latVal, lonVal));
+  const bear12 = toRad(bearingTo(lat1, lon1, lat2, lon2));
+  
+  const xt = Math.asin(Math.sin(angularDist) * Math.sin(bear13 - bear12)) * R;
+  return Math.abs(xt);
+}
+
+
 // ─── Route progress % ─────────────────────────────────────────────────────────
 export function routeProgress(aircraft) {
   const { origin_latitude: oLat, origin_longitude: oLon,
