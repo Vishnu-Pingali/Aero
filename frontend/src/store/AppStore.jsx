@@ -42,7 +42,6 @@ const initialState = {
   phaseFilter: "all",          // "all" | "climb" | "descend" | "cruise" | "ground"
   altBand: "all",              // "all" | "ground" | "low" | "mid" | "high"
   region: "all",
-  viewMode: "2d",              // "2d" | "3d"
   isFetching: false,
   showEmergencyModal: false,
   theme: "dark",               // "dark" | "light"
@@ -51,6 +50,64 @@ const initialState = {
   selectedAirlines: ["IGO", "DLH", "SWA"],
   selectedScheduledRoute: null,
 };
+
+
+// Helper to extend active route with new live positions in real time
+function extendActiveRoute(activeRoute, newFlight) {
+  if (!activeRoute || !activeRoute.points) return activeRoute;
+  const { aircraft, points } = activeRoute;
+
+  // Find the current point
+  const currentIdx = points.findIndex(p => p.type === 'current');
+  if (currentIdx === -1) return activeRoute;
+
+  const currentPt = points[currentIdx];
+
+  // Check if position has changed
+  const positionChanged = currentPt.latitude !== newFlight.latitude || currentPt.longitude !== newFlight.longitude;
+
+  if (!positionChanged) {
+    // Just update the aircraft details (speed, altitude, etc.) and the current point without adding a new waypoint
+    const newPoints = [...points];
+    newPoints[currentIdx] = {
+      ...currentPt,
+      latitude: newFlight.latitude,
+      longitude: newFlight.longitude,
+    };
+    return {
+      ...activeRoute,
+      aircraft: { ...aircraft, ...newFlight },
+      points: newPoints,
+    };
+  }
+
+  // Position changed! Create a new waypoint from the old current position
+  const oldCurrentAsWaypoint = {
+    type: 'waypoint',
+    label: `WPT_LIVE_${Date.now()}`,
+    latitude: currentPt.latitude,
+    longitude: currentPt.longitude,
+  };
+
+  // Insert the old position into the points array right before the 'current' point
+  const newPoints = [...points];
+  newPoints.splice(currentIdx, 0, oldCurrentAsWaypoint);
+
+  // Update the 'current' point to the new position
+  // Note: since we did a splice, the index of 'current' has shifted by +1
+  const newCurrentIdx = currentIdx + 1;
+  newPoints[newCurrentIdx] = {
+    ...newPoints[newCurrentIdx],
+    latitude: newFlight.latitude,
+    longitude: newFlight.longitude,
+  };
+
+  return {
+    ...activeRoute,
+    aircraft: { ...aircraft, ...newFlight },
+    points: newPoints,
+  };
+}
 
 
 // ─── Reducer ───────────────────────────────────────────────────────────────────
@@ -100,10 +157,20 @@ function reducer(state, action) {
         }
       }
 
+      // Extend active route with new live position if selected flight updated
+      let updatedActiveRoute = state.activeRoute;
+      if (state.selectedIcao && state.activeRoute && state.activeRoute.aircraft?.icao24 === state.selectedIcao) {
+        const updatedFlight = action.flights.find(f => f.icao24 === state.selectedIcao);
+        if (updatedFlight) {
+          updatedActiveRoute = extendActiveRoute(state.activeRoute, updatedFlight);
+        }
+      }
+
       return {
         ...state,
         flights: action.flights,
         flightTrails: updatedTrails,
+        activeRoute: updatedActiveRoute,
         lastUpdated: new Date(),
         isFetching: false
       };
@@ -153,7 +220,13 @@ function reducer(state, action) {
         }
       }
 
-      return { ...state, flights, flightTrails: updatedTrails };
+      // Extend active route with new live position if selected flight updated
+      let updatedActiveRoute = state.activeRoute;
+      if (state.selectedIcao && state.activeRoute && state.activeRoute.aircraft?.icao24 === state.selectedIcao && action.flight.icao24 === state.selectedIcao) {
+        updatedActiveRoute = extendActiveRoute(state.activeRoute, action.flight);
+      }
+
+      return { ...state, flights, flightTrails: updatedTrails, activeRoute: updatedActiveRoute };
     }
     case "SET_SELECTED_ICAO":
       return { ...state, selectedIcao: action.icao, selectedScheduledRoute: null };
@@ -205,7 +278,8 @@ function reducer(state, action) {
     case "SET_AIRLINES":
       return { ...state, selectedAirlines: action.airlines };
     case "SET_VIEW_MODE":
-      return { ...state, viewMode: action.mode };
+      // View mode is deprecated (3D globe removed)
+      return state;
 
     case "TOGGLE_EMERGENCY_MODAL":
       return { ...state, showEmergencyModal: !state.showEmergencyModal };

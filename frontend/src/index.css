@@ -30,11 +30,16 @@
   --glow-cruise: rgba(0, 219, 231, 0.75);
   --glow-ground: rgba(107, 114, 128, 0.5);
 
+  --color-aircraft: #dfb257;            /* Premium Matt Gold */
+  --color-aircraft-glow: rgba(223, 178, 87, 0.6);
+  --color-aircraft-selected: #ffda8a;   /* Bright Matt Gold */
+  --color-aircraft-stroke: #785300;     /* Dark Gold/Bronze outline (no black) */
+
   --glass-bg: rgba(26, 29, 35, 0.68);
   --glass-border: rgba(225, 253, 255, 0.1);
   --marker-label-shadow: 0 0 6px #061422, 0 0 3px #061422;
   --scrollbar-thumb: rgba(225, 253, 255, 0.15);
-  --selected-aircraft: #ffffff;
+  --selected-aircraft: #ffda8a;
 }
 
 .light {
@@ -58,6 +63,12 @@
   --color-phase-descend: #dc2626;
   --color-phase-cruise: #0284c7;
   --color-phase-ground: #4b5563;
+
+  --color-aircraft: #b3862b;            /* Rich Matt Gold for light backgrounds */
+  --color-aircraft-glow: rgba(179, 134, 43, 0.4);
+  --color-aircraft-selected: #8c6210;
+  --color-aircraft-stroke: #5c4108;     /* Deep Gold/Bronze outline */
+  --selected-aircraft: #8c6210;
 
   --glow-climb: rgba(5, 150, 105, 0.35);
   --glow-descend: rgba(220, 38, 38, 0.35);

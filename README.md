@@ -1,22 +1,24 @@
 # Aero Ops Intelligence
 
-Real-time aviation situational awareness dashboard. The project features a choice of backends (Python FastAPI or Node.js Express) querying live AirLabs position data and AviationWeather.gov METAR/SIGMET services, paired with an interactive React + Vite + Tailwind CSS map dashboard.
+Real-time aviation situational awareness dashboard. The project features a Node.js Express backend querying live AirLabs position data and AviationWeather.gov METAR/SIGMET services, paired with an interactive React + Vite + Tailwind CSS map dashboard.
 
 ---
 
 ## Architecture & Features
 
-### 1. Dual Backend Support
-You can run either backend; both expose a unified API for the frontend and keep a cached state to prevent rate-limiting the upstream APIs:
-- **Node.js Express Backend (`backend-node/`)**: A clean ES module implementation with standard Express routing, asynchronous file operations, and robust Server-Sent Events (SSE) broadcasting.
-- **Python FastAPI Backend (`backend/`)**: A Python-based alternative with typed Pydantic responses, dependency injection, and in-memory caching.
+### 1. Backend Service (`backend-node/`)
+A clean ES module implementation with standard Express routing, asynchronous file operations, and robust Server-Sent Events (SSE) broadcasting:
+- **Aircraft Metadata Enrichment:** Automated lookup of detailed aircraft models via the AirLabs database when the live feed lacks aircraft type information, with a persistent 30-day cache to avoid rate-limiting.
+- **SSE Streams:** Clients subscribe to live cache refresh notifications.
 
 ### 2. Frontend Dashboard (`frontend/`)
 An interactive React + Vite single-page application styled with Tailwind CSS, Outfit typography, and Leaflet Maps:
-- **FlightRadar24-Style trails**: Renders continuous, historical ADS-B position trails (up to 1,000 points) on a canvas layer with smooth HSL color gradients (cyan for new positions fading to deep blue for historical ones) and a dual-stroke glow.
-- **Dynamic Filtering**: A slider to dynamically filter visible flights by altitude.
-- **Sidebar Details & Route Loaders**: Select any flight to view detailed aircraft statistics and origin/destination route waypoints.
-- **Weather Layers**: Renders SIGMET GeoJSON hazard polygons and METAR weather reports for major US airport hubs (KJFK, KLAX, KORD, KATL, KDFW, KDEN, KSFO, KMIA).
+- **Authentic Aircraft Silhouettes:** Implements top-view aircraft silhouettes sourced from FlightAware's `dump1090-fa` (BSD-3-Clause). 
+- **Premium Matt Gold Theme:** Aircraft markers are colored in a professional desaturated matt gold with bronze outlines, scaling and rotating dynamically based on telemetry.
+- **Flight Trails:** Renders continuous, historical ADS-B position trails (up to 1,000 points) on a canvas layer with smooth HSL color gradients.
+- **Dynamic Filtering:** A slider to dynamically filter visible flights by altitude.
+- **Sidebar Details & Route Loaders:** Select any flight to view detailed aircraft statistics and origin/destination route waypoints.
+- **Weather Layers:** Renders SIGMET GeoJSON hazard polygons and METAR weather reports for major US airport hubs (KJFK, KLAX, KORD, KATL, KDFW, KDEN, KSFO, KMIA).
 
 ---
 
@@ -24,20 +26,10 @@ An interactive React + Vite single-page application styled with Tailwind CSS, Ou
 
 ```text
 Aero/
-├── backend/            # Python FastAPI Backend
-│   ├── app/            # FastAPI source (main.py, routes, config, services)
-│   ├── credentials/    # AirLabs credentials storage
-│   └── requirements.txt
-├── backend-node/       # Node.js Express Backend (recommended)
-│   ├── src/            # Express source (server.js, app.js, routes, services)
-│   ├── credentials/    # AirLabs credentials storage
-│   └── package.json
+├── backend-node/       # Node.js Express Backend
 ├── frontend/           # React + Vite + Leaflet Frontend
-│   ├── src/            # React source code (components, hooks, store, utils)
-│   ├── index.html      # Leaflet map container mount
-│   └── package.json
 ├── credentials.json    # Root fallback AirLabs credentials
-└── setup-node-backend.ps1  # Helper script to swap backend folder names
+└── task.md             # Project task board
 ```
 
 ---
@@ -45,7 +37,7 @@ Aero/
 ## Setup & Running Locally
 
 ### 1. Configure Credentials
-The backends require an **AirLabs API key** for flight data. Create a `credentials.json` file in either `backend-node/credentials/` or `backend/credentials/` (or at the repository root `credentials.json` as a fallback):
+The backend requires an **AirLabs API key** for flight data. Create a `credentials.json` file in `backend-node/credentials/` (or at the repository root `credentials.json` as a fallback):
 
 ```json
 {
@@ -57,7 +49,7 @@ Alternatively, set the `AIRLABS_API_KEY` environment variable in your `.env` fil
 
 ---
 
-### 2. Running the Node.js Backend (Recommended)
+### 2. Running the Node.js Backend
 1. Navigate to the Node.js backend directory:
    ```powershell
    cd backend-node
@@ -74,28 +66,7 @@ Alternatively, set the `AIRLABS_API_KEY` environment variable in your `.env` fil
 
 ---
 
-### 3. Running the Python Backend (Alternative)
-1. Navigate to the Python backend directory:
-   ```powershell
-   cd backend
-   ```
-2. Set up a virtual environment and activate it:
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
-3. Install dependencies:
-   ```powershell
-   pip install -r requirements.txt
-   ```
-4. Start the FastAPI development server:
-   ```powershell
-   uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-   ```
-
----
-
-### 4. Running the React Frontend
+### 3. Running the React Frontend
 1. Navigate to the frontend directory:
    ```powershell
    cd frontend
@@ -114,7 +85,7 @@ Alternatively, set the `AIRLABS_API_KEY` environment variable in your `.env` fil
 
 ## Core API Endpoints
 
-Both backends expose the following REST endpoints:
+The backend exposes the following REST endpoints:
 
 - `GET /health`: Basic health check.
 - `GET /api/flights`: Returns cached flights matching the default US bounding box.

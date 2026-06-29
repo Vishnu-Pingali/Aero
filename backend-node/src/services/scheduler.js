@@ -4,7 +4,6 @@
 // ──────────────────────────────────────────────────────────────────────────────
 
 import { writeJson } from '../utils/jsonStore.js';
-import { appendFileSync } from 'fs';
 
 // ── SSEBroadcaster ────────────────────────────────────────────────────────────
 // Manages a set of active SSE response objects. When the scheduler fetches new
@@ -164,9 +163,6 @@ export class FlightScheduler {
       if (response.flights.length > 0) {
         console.log("Sample Flight:", response.flights[0]);
       }
-
-      const schedulerLog = `\n--- SCHEDULER DIAGNOSTICS ---\nTimestamp: ${new Date().toISOString()}\nFlights Parsed: ${response.flights.length}\nSample Flight: ${response.flights.length > 0 ? JSON.stringify(response.flights[0]) : 'None'}\n-----------------------------\n`;
-      try { appendFileSync('v:\\BUP\\backend-node\\data\\diagnostics.log', schedulerLog); } catch (e) {}
 
       const payload = {
         fetched_at:  fetchedAt,

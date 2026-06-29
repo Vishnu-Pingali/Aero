@@ -64,15 +64,35 @@ const server = app.listen(settings.port, '127.0.0.1', () => {
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
-function shutdown(signal) {
+let isShuttingDown = false;
+function shutdown(signal, err = null) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   console.info(`\n[server] received ${signal} — shutting down…`);
-  scheduler.stop();
+  if (err) {
+    console.error('[server] Fatal error causing shutdown:', err);
+  }
+  try {
+    scheduler.stop();
+  } catch (e) {
+    console.error('[server] Error stopping scheduler:', e.message);
+  }
   server.close(() => {
     console.info('[server] HTTP server closed.');
-    process.exit(0);
+    process.exit(err ? 1 : 0);
   });
-  setTimeout(() => process.exit(1), 5000);
+  // Force exit after 5 seconds if graceful close hangs
+  setTimeout(() => {
+    console.warn('[server] Graceful shutdown timed out, forcing exit.');
+    process.exit(1);
+  }, 5000);
 }
 
 process.on('SIGINT',  () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('unhandledRejection', (reason, promise) => {
+  shutdown('unhandledRejection', reason instanceof Error ? reason : new Error(String(reason)));
+});
+process.on('uncaughtException', (err) => {
+  shutdown('uncaughtException', err);
+});

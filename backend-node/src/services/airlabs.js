@@ -5,7 +5,6 @@
 import { airportCoords } from '../utils/airports.js';
 import { clampToDefaultBbox, normalizeBbox, smallBbox, httpErr } from '../utils/bbox.js';
 import { getAircraft, upsertAircraft } from '../utils/jsonStore.js';
-import { appendFileSync } from 'fs';
 import { getDistanceKm } from './opensky.js';
 
 // Simple LRU-style in-process cache for airport coord lookups (avoids repeated
@@ -155,6 +154,20 @@ export class AirLabsService {
         );
       } catch (err) {
         console.warn(`[AirLabs] OpenSky failed to fetch track for ${icao24}: ${err.message}`);
+      }
+    }
+
+    // Fall back to locally recorded history if OpenSky track is empty/failed
+    if (!waypoints || waypoints.length === 0) {
+      const localHistory = this._trackHistory.get(icao24.toLowerCase()) || [];
+      if (localHistory.length > 0) {
+        console.info(`[AirLabs] OpenSky track unavailable. Falling back to local history for ${icao24.toUpperCase()} (${localHistory.length} points).`);
+        waypoints = localHistory.map((pt, idx) => ({
+          type: 'waypoint',
+          label: `WPT_LOC_${idx + 1}`,
+          latitude: pt.lat,
+          longitude: pt.lon,
+        }));
       }
     }
 
@@ -346,29 +359,13 @@ export class AirLabsService {
           headers: { Accept: 'application/json' },
         },
       );
-      let rawDataStr = JSON.stringify(response.data);
-      if (this._apiKey) {
-        rawDataStr = rawDataStr.split(this._apiKey).join('[REDACTED]');
-      }
-
-      const logMsg = `\n--- SUCCESS DIAGNOSTICS ---\nTimestamp: ${new Date().toISOString()}\nAPI URL: ${url}\nBBOX: ${JSON.stringify(bbox)}\nHTTP Status: ${response.status}\nHeaders: ${JSON.stringify(response.headers)}\nRaw Response: ${rawDataStr.slice(0, 1000)}\nResponse Count: ${response.data?.response?.length || 0}\nError: ${JSON.stringify(response.data?.error)}\n---------------------------\n`;
-      try { appendFileSync('v:\\BUP\\backend-node\\data\\diagnostics.log', logMsg); } catch (e) {}
-
       if (this._settings.environment !== 'production') {
         console.debug(`[AirLabs] Successful fetch. Count=${response.data?.response?.length || 0}`);
       }
     } catch (err) {
-      let errDataStr = err.response ? JSON.stringify(err.response.data) : err.message;
-      if (this._apiKey) {
-        errDataStr = errDataStr.split(this._apiKey).join('[REDACTED]');
-      }
-
-      const errLogMsg = `\n--- ERROR DIAGNOSTICS ---\nTimestamp: ${new Date().toISOString()}\nAPI URL: ${url}\nBBOX: ${JSON.stringify(bbox)}\nHTTP Status: ${err.response ? err.response.status : 'No Response'}\nHeaders: ${err.response ? JSON.stringify(err.response.headers) : 'N/A'}\nRaw Response (Error): ${errDataStr.slice(0, 1000)}\n-------------------------\n`;
-      try { appendFileSync('v:\\BUP\\backend-node\\data\\diagnostics.log', errLogMsg); } catch (e) {}
-
       if (err.response) {
         const status = err.response.status;
-        console.error(`[AirLabs] API request failed with status ${status}. Details: ${errDataStr.slice(0, 200)}`);
+        console.error(`[AirLabs] API request failed with status ${status}.`);
 
         if (status === 429) throw httpErr(429, 'AirLabs rate limit reached; retry shortly.');
         if (status >= 500) throw httpErr(502, 'AirLabs service is temporarily unavailable.');

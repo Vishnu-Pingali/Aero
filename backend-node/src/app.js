@@ -42,13 +42,20 @@ export function createApp(services) {
   // ── CORS ─────────────────────────────────────────────────────────────────────
   app.use(cors({
     origin(origin, cb) {
-      // Allow requests with no origin (e.g. curl, Postman)
+      // In production, strictly require the origin to be in settings.corsOrigins
+      if (settings.environment === 'production') {
+        if (settings.corsOrigins.includes(origin)) {
+          return cb(null, true);
+        }
+        return cb(new Error('CORS Policy: Origin not allowed.'), false);
+      }
+
+      // In development, also allow localhost/127.0.0.1 and requests with no origin (e.g., curl)
       if (!origin) return cb(null, true);
-      // Allow configured origins
       if (settings.corsOrigins.includes(origin)) return cb(null, true);
-      // Allow any localhost / 127.0.0.1 on any port (fully anchored regex)
       if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(origin)) return cb(null, true);
-      cb(null, false);
+
+      cb(new Error('CORS Policy: Origin not allowed.'), false);
     },
     credentials:   true,
     methods:       ['GET', 'OPTIONS'],

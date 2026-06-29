@@ -19,8 +19,8 @@ export class OpenSkyService {
     if (!icao24) return [];
 
     const cacheKey = `opensky:track:${icao24.toLowerCase()}`;
-    // Cache tracks for 3 minutes to avoid hammering OpenSky's API
-    return this._cache.getOrSet(cacheKey, 180, () => this._fetchLiveTrack(icao24.toLowerCase(), originLat, originLon));
+    // Cache tracks for 10 minutes (600 seconds) to avoid hammering OpenSky's API
+    return this._cache.getOrSet(cacheKey, 600, () => this._fetchLiveTrack(icao24.toLowerCase(), originLat, originLon));
   }
 
   async _fetchLiveTrack(icao24, originLat = null, originLon = null) {
@@ -28,109 +28,127 @@ export class OpenSkyService {
     const nowSec = Math.floor(Date.now() / 1000);
     const url = `https://opensky-network.org/api/tracks/all?icao24=${encodeURIComponent(icao24)}&time=${nowSec}`;
 
-    try {
-      console.log(`[OpenSky] Requesting track for aircraft ${icao24.toUpperCase()}...`);
-      
-      const config = {
-        headers: {
-          Accept: 'application/json',
-        },
-      };
+    const maxRetries = 3;
+    let delay = 1000; // start with 1 second delay
 
-      // Support OpenSky authentication via settings if configured
-      if (this._settings.opensky && this._settings.opensky.username && this._settings.opensky.password) {
-        config.auth = {
-          username: this._settings.opensky.username,
-          password: this._settings.opensky.password,
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[OpenSky] Requesting track for aircraft ${icao24.toUpperCase()} (attempt ${attempt}/${maxRetries})...`);
+        
+        const config = {
+          headers: {
+            Accept: 'application/json',
+          },
+          timeout: 5000, // 5s timeout to prevent hanging
         };
-      }
 
-      const response = await this._client.get(url, config);
-      const { path } = response.data;
-
-      if (!Array.isArray(path) || path.length === 0) {
-        console.log(`[OpenSky] No track points returned for ${icao24.toUpperCase()}.`);
-        return [];
-      }
-
-      console.log(`[OpenSky] Retrieved ${path.length} track points for ${icao24.toUpperCase()}.`);
-
-      // Sort path chronologically (ascending by timestamp pt[0])
-      const sortedPath = [...path].sort((a, b) => {
-        const timeA = a[0] != null ? Number(a[0]) : 0;
-        const timeB = b[0] != null ? Number(b[0]) : 0;
-        return timeA - timeB;
-      });
-
-      // Filter track to only include the current flight segment by walking backwards
-      let startIndex = 0;
-      for (let i = sortedPath.length - 1; i > 0; i--) {
-        const curr = sortedPath[i];
-        const prev = sortedPath[i - 1];
-
-        // 1. Time gap check (more than 30 minutes / 1800 seconds)
-        if (curr[0] != null && prev[0] != null && (curr[0] - prev[0]) > 1800) {
-          startIndex = i;
-          break;
+        // Support OpenSky authentication via settings if configured
+        if (this._settings.opensky && this._settings.opensky.username && this._settings.opensky.password) {
+          config.auth = {
+            username: this._settings.opensky.username,
+            password: this._settings.opensky.password,
+          };
         }
 
-        // 2. Ground status check
-        if (prev[5] === true || String(prev[5]).toLowerCase() === 'true' || prev[5] === 1) {
-          startIndex = i;
-          break;
+        const response = await this._client.get(url, config);
+        const { path } = response.data;
+
+        if (!Array.isArray(path) || path.length === 0) {
+          console.log(`[OpenSky] No track points returned for ${icao24.toUpperCase()}.`);
+          return [];
         }
 
-        // 3. Distance to origin check (within 15 km)
-        if (originLat != null && originLon != null && prev[1] != null && prev[2] != null) {
-          const dist = getDistanceKm(
-            parseFloat(prev[1]),
-            parseFloat(prev[2]),
-            parseFloat(originLat),
-            parseFloat(originLon)
-          );
-          if (dist < 15) {
+        console.log(`[OpenSky] Retrieved ${path.length} track points for ${icao24.toUpperCase()}.`);
+
+        // Sort path chronologically (ascending by timestamp pt[0])
+        const sortedPath = [...path].sort((a, b) => {
+          const timeA = a[0] != null ? Number(a[0]) : 0;
+          const timeB = b[0] != null ? Number(b[0]) : 0;
+          return timeA - timeB;
+        });
+
+        // Filter track to only include the current flight segment by walking backwards
+        let startIndex = 0;
+        for (let i = sortedPath.length - 1; i > 0; i--) {
+          const curr = sortedPath[i];
+          const prev = sortedPath[i - 1];
+
+          // 1. Time gap check (more than 30 minutes / 1800 seconds)
+          if (curr[0] != null && prev[0] != null && (curr[0] - prev[0]) > 1800) {
             startIndex = i;
             break;
           }
+
+          // 2. Ground status check
+          if (prev[5] === true || String(prev[5]).toLowerCase() === 'true' || prev[5] === 1) {
+            startIndex = i;
+            break;
+          }
+
+          // 3. Distance to origin check (within 15 km)
+          if (originLat != null && originLon != null && prev[1] != null && prev[2] != null) {
+            const dist = getDistanceKm(
+              parseFloat(prev[1]),
+              parseFloat(prev[2]),
+              parseFloat(originLat),
+              parseFloat(originLon)
+            );
+            if (dist < 15) {
+              startIndex = i;
+              break;
+            }
+          }
         }
-      }
 
-      const currentSegment = sortedPath.slice(startIndex);
-      console.log(`[OpenSky] Filtered current segment to ${currentSegment.length} of ${sortedPath.length} points for ${icao24.toUpperCase()}.`);
+        const currentSegment = sortedPath.slice(startIndex);
+        console.log(`[OpenSky] Filtered current segment to ${currentSegment.length} of ${sortedPath.length} points for ${icao24.toUpperCase()}.`);
 
-      // Downsample to max 50 points to prevent high overhead
-      const waypoints = [];
-      const step = Math.max(1, Math.floor(currentSegment.length / 50));
-      
-      for (let i = 0; i < currentSegment.length; i += step) {
-        const pt = currentSegment[i];
-        if (pt[1] != null && pt[2] != null) {
+        // Downsample to max 50 points to prevent high overhead
+        const waypoints = [];
+        const step = Math.max(1, Math.floor(currentSegment.length / 50));
+        
+        for (let i = 0; i < currentSegment.length; i += step) {
+          const pt = currentSegment[i];
+          if (pt[1] != null && pt[2] != null) {
+            waypoints.push({
+              type: 'waypoint',
+              label: `WPT${waypoints.length + 1}`,
+              latitude: parseFloat(pt[1]),
+              longitude: parseFloat(pt[2]),
+            });
+          }
+        }
+        
+        // Ensure the last point is included
+        const lastPt = currentSegment[currentSegment.length - 1];
+        if (currentSegment.length > 1 && (currentSegment.length - 1) % step !== 0 && lastPt[1] != null && lastPt[2] != null) {
           waypoints.push({
             type: 'waypoint',
             label: `WPT${waypoints.length + 1}`,
-            latitude: parseFloat(pt[1]),
-            longitude: parseFloat(pt[2]),
+            latitude: parseFloat(lastPt[1]),
+            longitude: parseFloat(lastPt[2]),
           });
         }
-      }
-      
-      // Ensure the last point is included
-      const lastPt = currentSegment[currentSegment.length - 1];
-      if (currentSegment.length > 1 && (currentSegment.length - 1) % step !== 0 && lastPt[1] != null && lastPt[2] != null) {
-        waypoints.push({
-          type: 'waypoint',
-          label: `WPT${waypoints.length + 1}`,
-          latitude: parseFloat(lastPt[1]),
-          longitude: parseFloat(lastPt[2]),
-        });
-      }
 
-      return waypoints;
-    } catch (err) {
-      const detail = err.response ? JSON.stringify(err.response.data) : err.message;
-      console.warn(`[OpenSky] Track request failed for ${icao24.toUpperCase()}:`, detail);
-      return [];
+        return waypoints;
+      } catch (err) {
+        const isRateLimit = err.response && err.response.status === 429;
+        const isServerError = err.response && err.response.status >= 500;
+        const isTimeout = err.code === 'ECONNABORTED';
+
+        if (attempt < maxRetries && (isRateLimit || isServerError || isTimeout)) {
+          const backoffDelay = isRateLimit ? delay * 3 : delay * 2; // More aggressive backoff for 429 rate limit
+          console.warn(`[OpenSky] Attempt ${attempt} failed (${err.message}). Retrying in ${backoffDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          delay = backoffDelay;
+        } else {
+          const detail = err.response ? JSON.stringify(err.response.data) : err.message;
+          console.warn(`[OpenSky] Track request failed for ${icao24.toUpperCase()} after ${attempt} attempts:`, detail);
+          return []; // Graceful fallback: return empty array so route resolves without track
+        }
+      }
     }
+    return [];
   }
 }
 

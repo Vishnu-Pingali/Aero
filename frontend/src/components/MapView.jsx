@@ -36,21 +36,24 @@ const TILE_LAYERS = {
 function markerHtml(flight, showLabel, isSelected) {
   const bearing = flightBearing(flight);
   const phase = flightPhase(flight);
-  const { color, glow } = PHASE_COLORS[phase];
+  const { color } = PHASE_COLORS[phase];
+  
+  const markerColor = isSelected ? "var(--color-aircraft-selected)" : "var(--color-aircraft)";
+  const markerGlow = isSelected ? "var(--color-aircraft-selected)" : "var(--color-aircraft-glow)";
+  
   const label = showLabel
-    ? `<div class="aircraft-marker-label" style="--marker-color:${color}">${flight.callsign || flight.icao24.toUpperCase()}</div>`
+    ? `<div class="aircraft-marker-label" style="--marker-color:${markerColor}">${flight.callsign || flight.icao24.toUpperCase()}</div>`
     : "";
 
   const scale = isSelected ? "scale(1.35)" : "scale(1)";
-  const border = isSelected ? `border: 2px solid var(--selected-aircraft); border-radius: 50%; box-shadow: 0 0 14px ${color}, 0 0 6px ${color}` : "";
-  const markerColor = isSelected ? "var(--selected-aircraft)" : color;
+  const border = isSelected ? `border: 2px solid var(--selected-aircraft); border-radius: 50%; box-shadow: 0 0 14px ${markerColor}, 0 0 6px ${markerColor}` : "";
 
   // getSvgForFlight handles all category detection and fallback internally
-  const svgHtml = getSvgForFlight(flight);
+  const svgHtml = getSvgForFlight(flight, isSelected ? "#ffffff" : "var(--color-aircraft-stroke)", markerColor);
 
   return `
     <div style="position:relative;width:40px;height:40px;transform:${scale};transition:transform 0.2s;z-index:${isSelected ? 1000 : 1}">
-      <div class="aircraft-marker" style="--marker-color:${markerColor};--marker-glow:${glow};--heading:${bearing}deg;${border}">
+      <div class="aircraft-marker" style="--marker-color:${markerColor};--marker-glow:${markerGlow};--heading:${bearing}deg;${border}">
         ${svgHtml}
       </div>
       ${label}
@@ -796,11 +799,6 @@ export default function MapView() {
   const radarLayerRef            = useRef(null);
   const scheduledRouteLayerRef   = useRef(null);
   const lockViewTimerRef = useRef(null);
-  const canvasRef       = useRef(null);
-  const wwdRef          = useRef(null);
-  const wwdAircraftLayerRef = useRef(null);
-  const wwdRouteLayerRef = useRef(null);
-  const wwdSigmetLayerRef = useRef(null);
 
   const focusFlight = useFocusFlight();
   const [mapReady, setMapReady] = useState(undefined);
@@ -873,256 +871,7 @@ export default function MapView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Helper: Convert Hex string to Web WorldWind Color ────────────────────────
-  const hexToWwdColor = (hex, opacity = 1.0) => {
-    let clean = hex.replace("#", "");
-    if (clean.length === 3) {
-      clean = clean.split("").map((c) => c + c).join("");
-    }
-    const r = parseInt(clean.substring(0, 2), 16) / 255;
-    const g = parseInt(clean.substring(2, 4), 16) / 255;
-    const b = parseInt(clean.substring(4, 6), 16) / 255;
-    return new window.WorldWind.Color(r, g, b, opacity);
-  };
-
-  // ── Init NASA Web WorldWind 3D Globe ──────────────────────────────────────────
-  useEffect(() => {
-    if (!canvasRef.current || !window.WorldWind) return;
-
-    // Initialize the WorldWindow on canvas
-    const wwd = new window.WorldWind.WorldWindow("worldwind-canvas");
-
-    // Add base imagery layers (Blue Marble low-res + Landsat high-res)
-    wwd.addLayer(new window.WorldWind.BMNGOneImageLayer());
-    wwd.addLayer(new window.WorldWind.BMNGLandsatLayer());
-
-    // Add standard WorldWind controls
-    wwd.addLayer(new window.WorldWind.CompassLayer());
-    wwd.addLayer(new window.WorldWind.CoordinatesDisplayLayer(wwd));
-    wwd.addLayer(new window.WorldWind.ViewControlsLayer(wwd));
-
-    // Custom data layers
-    const aircraftLayer = new window.WorldWind.RenderableLayer("Aircraft");
-    const routeLayer    = new window.WorldWind.RenderableLayer("Route Paths");
-    const sigmetLayer   = new window.WorldWind.RenderableLayer("SIGMET Alerts");
-
-    wwd.addLayer(aircraftLayer);
-    wwd.addLayer(routeLayer);
-    wwd.addLayer(sigmetLayer);
-
-    wwdRef.current = wwd;
-    wwdAircraftLayerRef.current = aircraftLayer;
-    wwdRouteLayerRef.current = routeLayer;
-    wwdSigmetLayerRef.current = sigmetLayer;
-
-    // Set initial position to active region
-    // In WorldWind 0.9.0, wwd.navigator IS the LookAtNavigator directly
-    const reg = REGIONS[state.region] || { center: [39.5, -98.35] };
-    wwd.navigator.lookAtLocation.latitude  = reg.center[0];
-    wwd.navigator.lookAtLocation.longitude = reg.center[1];
-    wwd.navigator.range = 4.5e6;
-    wwd.redraw();
-
-    // Mouse picking / selection click listener
-    const handlePick = (e) => {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const pickList = wwd.pick(wwd.canvasCoordinates(x, y));
-      if (pickList.objects.length > 0) {
-        for (let p = 0; p < pickList.objects.length; p++) {
-          const userObj = pickList.objects[p].userObject;
-          if (userObj instanceof window.WorldWind.Placemark && userObj.flight) {
-            focusFlight(userObj.flight.icao24, { lat: userObj.flight.latitude, lng: userObj.flight.longitude });
-            break;
-          }
-        }
-      }
-    };
-    canvasRef.current.addEventListener("click", handlePick);
-
-    return () => {
-      if (canvasRef.current) {
-        canvasRef.current.removeEventListener("click", handlePick);
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Region panning removed — map now shows worldwide flights
-
-
-  // ── Update WorldWind Globe Data ─────────────────────────────────────────────
-  useEffect(() => {
-    const wwd = wwdRef.current;
-    if (!wwd) return;
-
-    wwdAircraftLayerRef.current.removeAllRenderables();
-    wwdRouteLayerRef.current.removeAllRenderables();
-    wwdSigmetLayerRef.current.removeAllRenderables();
-
-    const visible = filterFlights(state.flights, {
-      altBand: state.altBand,
-      searchQuery: state.searchQuery,
-      phaseFilter: state.phaseFilter,
-      selectedAirlines: state.selectedAirlines,
-      selectedIcao: state.selectedIcao,
-    });
-
-    // Render Flights as Placemarks
-    for (const f of visible) {
-      const position = new window.WorldWind.Position(f.latitude, f.longitude, (f.altitude_ft || 0) * 0.3048);
-      const placemark = new window.WorldWind.Placemark(position, true, null);
-      placemark.label = f.callsign || f.icao24.toUpperCase();
-      placemark.flight = f; // Attach for pick selection
-
-      const isSelected = state.selectedIcao === f.icao24;
-      const phase = flightPhase(f);
-      const { color } = PHASE_COLORS[phase];
-
-      const attrs = new window.WorldWind.PlacemarkAttributes(null);
-      attrs.imageScale = isSelected ? 0.75 : 0.55;
-      attrs.labelAttributes.color = hexToWwdColor(color);
-      attrs.labelAttributes.font.size = 11;
-      attrs.labelAttributes.font.family = "monospace";
-      attrs.labelAttributes.offset = new window.WorldWind.Offset(
-        window.WorldWind.OFFSET_FRACTION, 0.5,
-        window.WorldWind.OFFSET_FRACTION, -1.2
-      );
-
-      // Create a canvas icon representation for the airplane pointer
-      const canvas = document.createElement("canvas");
-      canvas.width = 32;
-      canvas.height = 32;
-      const ctx = canvas.getContext("2d");
-      ctx.translate(16, 16);
-      
-      const bearing = flightBearing(f);
-      ctx.rotate((bearing * Math.PI) / 180);
-
-      // Draw custom aircraft arrow
-      ctx.beginPath();
-      ctx.moveTo(0, -9);
-      ctx.lineTo(7, 7);
-      ctx.lineTo(0, 3);
-      ctx.lineTo(-7, 7);
-      ctx.closePath();
-
-      ctx.fillStyle = color;
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = isSelected ? "#ffffff" : "#061422";
-      ctx.stroke();
-
-      if (isSelected) {
-        ctx.beginPath();
-        ctx.arc(0, 0, 11, 0, 2 * Math.PI);
-        ctx.lineWidth = 1.0;
-        ctx.strokeStyle = color;
-        ctx.stroke();
-      }
-
-      attrs.imageSource = canvas;
-      placemark.attributes = attrs;
-      wwdAircraftLayerRef.current.addRenderable(placemark);
-    }
-
-    // Render Active Route as Paths
-    if (state.activeRoute) {
-      const { points: routePoints } = state.activeRoute;
-      const origin = routePoints.find((p) => p.type === "origin");
-      const dest = routePoints.find((p) => p.type === "destination");
-      const current = routePoints.find((p) => p.type === "current");
-      const waypointPts = routePoints.filter((p) => p.type === "waypoint");
-
-      if (origin && current) {
-        // Planned/Flown Route: connect origin -> waypoints -> current
-        const plannedSeq = [origin, ...waypointPts, current].filter(Boolean);
-        const pathCoords = plannedSeq.map((p) => {
-          const alt = p.type === "current" ? (current.altitude_ft || 0) * 0.3048 : 100;
-          return new window.WorldWind.Position(p.latitude, p.longitude, alt);
-        });
-
-        const path = new window.WorldWind.Path(pathPositions => pathCoords, null);
-        path.positions = pathCoords;
-        const pathAttrs = new window.WorldWind.ShapeAttributes(null);
-        pathAttrs.outlineColor = hexToWwdColor("#b9cacb", 0.5);
-        pathAttrs.outlineWidth = 2.0;
-        path.attributes = pathAttrs;
-        wwdRouteLayerRef.current.addRenderable(path);
-      }
-
-      if (current && dest) {
-        // Remaining Route: connect current -> destination directly
-        const pathCoords = [
-          new window.WorldWind.Position(current.latitude, current.longitude, (current.altitude_ft || 0) * 0.3048),
-          new window.WorldWind.Position(dest.latitude, dest.longitude, 100)
-        ];
-        const path = new window.WorldWind.Path(pathPositions => pathCoords, null);
-        path.positions = pathCoords;
-        const pathAttrs = new window.WorldWind.ShapeAttributes(null);
-        pathAttrs.outlineColor = hexToWwdColor("#00f2ff", 0.85);
-        pathAttrs.outlineWidth = 3.0;
-        path.attributes = pathAttrs;
-        wwdRouteLayerRef.current.addRenderable(path);
-      }
-
-      if (current) {
-        wwd.navigator.lookAtLocation.latitude  = current.latitude;
-        wwd.navigator.lookAtLocation.longitude = current.longitude;
-        wwd.navigator.range = 1.2e6;
-      }
-    }
-
-    // Render SIGMET Polygons
-    if (state.sigmetsVisible && state.sigmets.length) {
-      for (const feat of state.sigmets) {
-        const geometry = feat.geometry;
-        if (geometry && geometry.type === "Polygon") {
-          const coords = geometry.coordinates[0];
-          const locations = coords.map((c) => new window.WorldWind.Location(c[1], c[0]));
-          
-          const polygon = new window.WorldWind.Polygon(locations, null);
-          polygon.altitudeMode = window.WorldWind.CLAMP_TO_GROUND;
-
-          const severity = normalizeSigmetSeverity(feat.properties);
-          const severityColors = {
-            extreme: "#ff3b30",  // Professional crimson warning
-            severe: "#ff9500",   // Alert orange
-            moderate: "#ffcc00", // Soft yellow
-            advisory: "#5ac8fa", // Muted aviation blue for advisories
-          };
-          const color = severityColors[severity] || severityColors.advisory;
-
-          const outlineOpacity = { extreme: 0.7, severe: 0.5, moderate: 0.4, advisory: 0.25 }[severity] || 0.3;
-          const fillOpacity = { extreme: 0.18, severe: 0.12, moderate: 0.08, advisory: 0.03 }[severity] || 0.05;
-          const outlineWidth = { extreme: 2.0, severe: 1.5, moderate: 1.2, advisory: 1.0 }[severity] || 1.0;
-
-          const shapeAttrs = new window.WorldWind.ShapeAttributes(null);
-          shapeAttrs.drawInterior = true;
-          shapeAttrs.drawOutline = true;
-          shapeAttrs.outlineColor = hexToWwdColor(color, outlineOpacity);
-          shapeAttrs.interiorColor = hexToWwdColor(color, fillOpacity);
-          shapeAttrs.outlineWidth = outlineWidth;
-
-          polygon.attributes = shapeAttrs;
-          wwdSigmetLayerRef.current.addRenderable(polygon);
-        }
-      }
-    }
-
-    wwd.redraw();
-  }, [
-    state.flights,
-    state.selectedIcao,
-    state.activeRoute,
-    state.altBand,
-    state.searchQuery,
-    state.phaseFilter,
-    state.selectedAirlines,
-    state.sigmets,
-    state.sigmetsVisible
-  ]);
+  // WorldWind 3D Globe logic removed
 
 
   // ── Tile layer switcher ─────────────────────────────────────────────────────
@@ -1687,25 +1436,14 @@ export default function MapView() {
       {/* Leaflet container */}
       <div
         ref={mapRef}
-        className={`absolute inset-0 transition-opacity duration-500 ${
-          state.viewMode === "2d" ? "opacity-100 z-10 pointer-events-auto" : "opacity-0 pointer-events-none z-0"
-        }`}
-      />
-
-      {/* WorldWind 3D Globe Canvas */}
-      <canvas
-        ref={canvasRef}
-        id="worldwind-canvas"
-        className={`absolute inset-0 w-full h-full outline-none transition-opacity duration-500 ${
-          state.viewMode === "3d" ? "opacity-100 z-10 pointer-events-auto" : "opacity-0 pointer-events-none z-0"
-        }`}
+        className="absolute inset-0 z-10"
       />
 
       {/* Vignette overlay */}
       <div className="absolute inset-0 pointer-events-none z-[420] bg-[radial-gradient(circle_at_center,transparent_0%,rgba(6,20,34,0.45)_100%)]" />
 
       {/* Zoom-in hint — shown when zoomed out too far for markers to appear */}
-      {state.viewMode === "2d" && currentZoom < 4 && (
+      {currentZoom < 4 && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[800] pointer-events-none">
           <div className="glass-panel px-5 py-3 rounded-2xl border border-primary/20 flex items-center gap-3 shadow-2xl">
             <span className="material-symbols-outlined text-primary text-xl animate-pulse">zoom_in</span>
@@ -1768,33 +1506,6 @@ export default function MapView() {
             >
               <span className="material-symbols-outlined text-sm leading-none">close</span>
             </button>
-          </div>
-
-          {/* Section: View Mode */}
-          <div className="flex flex-col gap-1.5">
-            <div className="font-mono text-[9px] text-on-surface-variant tracking-wider uppercase">VIEW MODE</div>
-            <div className="grid grid-cols-2 gap-1">
-              {[
-                { id: "2d", label: "2D MAP", icon: "map" },
-                { id: "3d", label: "3D GLOBE", icon: "public" }
-              ].map((mode) => {
-                const isSelected = state.viewMode === mode.id;
-                return (
-                  <button
-                    key={mode.id}
-                    onClick={() => dispatch({ type: "SET_VIEW_MODE", mode: mode.id })}
-                    className={`py-1.5 rounded text-[9px] font-mono border transition-all flex items-center justify-center gap-1 ${
-                      isSelected
-                        ? "bg-primary/20 text-primary border-primary/40 shadow-[0_0_8px_rgba(0,242,255,0.1)]"
-                        : "text-on-surface-variant border-transparent hover:bg-on-surface/5"
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[10px] leading-none">{mode.icon}</span>
-                    <span>{mode.label}</span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* Section: Base Layers */}
@@ -1986,14 +1697,7 @@ export default function MapView() {
             <button
               id="locate-us"
               onClick={() => {
-                if (state.viewMode === "3d" && wwdRef.current) {
-                  wwdRef.current.navigator.lookAtLocation.latitude  = US_CENTER[0];
-                  wwdRef.current.navigator.lookAtLocation.longitude = US_CENTER[1];
-                  wwdRef.current.navigator.range = 4.5e6;
-                  wwdRef.current.redraw();
-                } else {
-                  mapInstanceRef.current?.setView(US_CENTER, US_ZOOM);
-                }
+                mapInstanceRef.current?.setView(US_CENTER, US_ZOOM);
               }}
               className="flex-1 py-1.5 rounded-lg border border-on-surface/10 hover:border-primary/40 hover:bg-primary/5 transition-all flex items-center justify-center gap-1 text-[10px] font-mono text-on-surface-variant hover:text-primary"
               title="US overview"
